@@ -4,8 +4,14 @@ authors = ["bstriker <strikeforcezero@gmail.com>"]
 version = "0.0.0"
 edition = "2021"
 
-[dependencies]
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
 bevy = { version = "0.15", features = ["wayland"] }
+
+[dependencies]
+bevy = { workspace = true }
 rand = "0.8"
 # Compile low-severity logs out of native builds for performance.
 log = { version = "0.4", features = [
