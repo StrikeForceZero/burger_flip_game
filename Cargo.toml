@@ -14,6 +14,7 @@ thiserror = "2"
 proc-macro2 = "1"
 syn = { version = "2", features = ["full"] }
 quote = "1"
+smart-default = "0.7"
 
 [dependencies]
 internal_bevy_auto_plugin_macros = { workspace = true }
@@ -21,6 +22,7 @@ bevy = { workspace = true }
 bevy-inspector-egui = { version = "0.28.1" }
 avian2d = { version = "0.2", features = ["enhanced-determinism"] }
 rand = "0.8"
+smart-default = { workspace = true }
 # Compile low-severity logs out of native builds for performance.
 log = { version = "0.4", features = [
     "max_level_debug",
