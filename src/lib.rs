@@ -6,6 +6,7 @@ mod dev_tools;
 mod screens;
 mod theme;
 
+use avian2d::PhysicsPlugins;
 use bevy::{
     asset::AssetMetaCheck,
     audio::{AudioPlugin, Volume},
@@ -53,6 +54,11 @@ impl Plugin for AppPlugin {
                     ..default()
                 }),
         );
+
+        // Add 3rd party plugins
+        app.add_plugins((
+            PhysicsPlugins::default(),
+        ));
 
         // Add other plugins.
         app.add_plugins((
