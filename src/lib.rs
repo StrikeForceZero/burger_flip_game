@@ -12,6 +12,7 @@ use bevy::{
     audio::{AudioPlugin, Volume},
     prelude::*,
 };
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 pub struct AppPlugin;
 
@@ -57,6 +58,7 @@ impl Plugin for AppPlugin {
 
         // Add 3rd party plugins
         app.add_plugins((
+            WorldInspectorPlugin::default(),
             PhysicsPlugins::default(),
         ));
 
