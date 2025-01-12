@@ -18,6 +18,7 @@ quote = "1"
 [dependencies]
 internal_bevy_auto_plugin_macros = { workspace = true }
 bevy = { workspace = true }
+avian2d = { version = "0.2", features = ["enhanced-determinism"] }
 rand = "0.8"
 # Compile low-severity logs out of native builds for performance.
 log = { version = "0.4", features = [
