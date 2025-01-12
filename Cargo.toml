@@ -11,6 +11,7 @@ members = ["crates/*"]
 bevy = { version = "0.15", features = ["wayland"] }
 thiserror = "2"
 proc-macro2 = "1"
+syn = { version = "2", features = ["full"] }
 
 [dependencies]
 bevy = { workspace = true }
