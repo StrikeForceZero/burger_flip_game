@@ -1,10 +1,13 @@
 use crate::screens::Screen;
+use avian2d::math::Scalar;
 use avian2d::prelude::*;
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
 use smart_default::SmartDefault;
+use std::f32::consts::PI;
+use itertools::Itertools;
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
@@ -60,12 +63,35 @@ impl Command for SpawnPatty {
     }
 }
 
+const PATTY_PARTS: f32 = 6.0;
+const PATTY_WIDTH: f32 = 100.0;
+const PATTY_PART_WIDTH: f32 = PATTY_WIDTH / PATTY_PARTS;
+const PATTY_HEIGHT: f32 = 20.0;
+
 fn spawn_patty(In(config): In<SpawnPatty>, mut commands: Commands) {
-    commands.spawn((
-        Patty,
-        StateScoped(Screen::Gameplay),
-        Transform::from_translation(config.pos.extend(0.0)).with_scale(config.scale.extend(1.0)),
-    ));
+    let spawn_patty = |ix: usize| -> Entity {
+        let offset = Vec2::X * (ix as f32 - PATTY_PARTS / 2.0) * PATTY_PART_WIDTH;
+        let translation = (config.pos + offset * config.scale).extend(0.0);
+        let transform_scale = config.scale.extend(1.0);
+        commands
+            .spawn((
+                Patty,
+                NoAutoCenterOfMass,
+                StateScoped(Screen::Gameplay),
+                Transform::from_translation(translation).with_scale(transform_scale),
+            ))
+            .id()
+    };
+    let patty_parts = (0..(PATTY_PARTS as usize)).map(spawn_patty).collect_vec();
+    for (left, right) in patty_parts.into_iter().tuple_windows() {
+        let half_width = PATTY_PART_WIDTH * config.scale / 2.0;
+        commands.spawn(
+            RevoluteJoint::new(left, right)
+                .with_local_anchor_1(Vec2::X * half_width)
+                .with_local_anchor_2(Vec2::NEG_X * half_width)
+                .with_compliance(0.0000001),
+        );
+    }
 }
 
 fn on_patty_add(
@@ -79,16 +105,18 @@ fn on_patty_add(
         .clone_handle()
         .expect("Patty material not initialized");
 
-    commands
-        .entity(trigger.entity())
-        .insert((mesh, material, Collider::rectangle(100.0, 20.0)));
+    commands.entity(trigger.entity()).insert((
+        mesh,
+        material,
+        Collider::rectangle(PATTY_PART_WIDTH, PATTY_HEIGHT),
+    ));
 }
 
 fn init_mesh(mut pan_mesh: ResMut<PattyMesh>, mut meshes: ResMut<Assets<Mesh>>) {
     if pan_mesh.0.is_some() {
         return;
     }
-    let handle = meshes.add(Rectangle::new(100.0, 20.0));
+    let handle = meshes.add(Rectangle::new(PATTY_PART_WIDTH, PATTY_HEIGHT));
     pan_mesh.0 = Some(Mesh2d(handle));
 }
 
