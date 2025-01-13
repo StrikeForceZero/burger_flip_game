@@ -1562,6 +1562,7 @@ dependencies = [
  "bevy-inspector-egui",
  "internal_bevy_auto_plugin_macros",
  "log",
+ "num-traits",
  "rand",
  "smart-default",
  "tracing",
