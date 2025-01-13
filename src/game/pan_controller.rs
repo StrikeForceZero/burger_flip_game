@@ -1,11 +1,12 @@
+use std::f32::consts::PI;
 use crate::game::pan;
 use crate::game::pan::Pan;
 use crate::AppSet;
-use avian2d::prelude::AngularVelocity;
+use avian2d::prelude::{AngularVelocity, PhysicsSchedule, PhysicsStepSet};
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
-use num_traits::real::Real;
 use internal_bevy_auto_plugin_macros::{auto_plugin, auto_register_type};
+use num_traits::real::Real;
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Reflect)]
@@ -18,7 +19,10 @@ pub struct PanController {
 
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(FixedUpdate, (apply_input).chain().in_set(AppSet::Update));
+    app.add_systems(
+        PhysicsSchedule,
+        (apply_input).chain().in_set(PhysicsStepSet::Last),
+    );
 }
 
 #[derive(QueryData)]
@@ -30,23 +34,22 @@ struct ApplyInputQueryData<'w> {
 }
 
 fn apply_input(mut movement_query: Query<ApplyInputQueryData, With<Pan>>) {
+    const EPSILON: f32 = PI / 180.0 / 10.0; // 1/10 deg
     for mut item in &mut movement_query {
-        let at_or_over_max = item.transform.rotation.z >= pan::PAN_MAX_RADIANS;
-        let at_or_under_min = item.transform.rotation.z <= pan::PAN_MIN_RADIANS;
+        let current_rotation = item.transform.rotation.to_euler(EulerRot::ZYX).0;
+        let clamped_rotation = current_rotation.clamp(pan::PAN_MIN_RADIANS, pan::PAN_MAX_RADIANS);
+        let at_or_over_max = clamped_rotation >= pan::PAN_MAX_RADIANS - EPSILON;
+        let at_or_under_min = clamped_rotation <= pan::PAN_MIN_RADIANS + EPSILON;
         let requested_rotation = item.pan_controller.intent;
-        let velocity = if at_or_over_max && requested_rotation.map(Real::is_sign_positive) == Some(true)
-            || at_or_under_min && requested_rotation.map(Real::is_sign_negative) == Some(true)
+
+        let velocity = if at_or_over_max && requested_rotation.is_some()
+            || at_or_under_min && requested_rotation.is_none()
         {
             0.0
         } else {
             requested_rotation.unwrap_or(-item.pan_controller.rotation_speed)
         };
-        let clamped_rotation = item
-            .transform
-            .rotation
-            .z
-            .clamp(pan::PAN_MIN_RADIANS, pan::PAN_MAX_RADIANS);
-        item.transform.rotation.z = clamped_rotation;
+        item.transform.rotation = Quat::from_rotation_z(clamped_rotation);
         item.angular_velocity.0 = velocity;
     }
 }

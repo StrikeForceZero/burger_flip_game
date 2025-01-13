@@ -5,7 +5,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
-use std::f32::consts::FRAC_PI_8;
+use std::f32::consts::FRAC_PI_4;
 use crate::AppSet;
 
 #[auto_register_type]
@@ -52,7 +52,7 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-pub const PAN_MIN_RADIANS: f32 = -FRAC_PI_8;
+pub const PAN_MIN_RADIANS: f32 = -FRAC_PI_4;
 pub const PAN_MAX_RADIANS: f32 = 0.0;
 
 fn handle_mouse_input(
