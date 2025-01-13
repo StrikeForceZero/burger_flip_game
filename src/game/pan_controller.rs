@@ -47,7 +47,7 @@ fn apply_input(mut movement_query: Query<ApplyInputQueryData, With<Pan>>) {
         {
             0.0
         } else {
-            requested_rotation.unwrap_or(-item.pan_controller.rotation_speed)
+            requested_rotation.unwrap_or(-item.pan_controller.rotation_speed / 2.0)
         };
         item.transform.rotation = Quat::from_rotation_z(clamped_rotation);
         item.angular_velocity.0 = velocity;

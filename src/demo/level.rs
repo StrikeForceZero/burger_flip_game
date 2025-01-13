@@ -23,7 +23,7 @@ pub fn spawn_level(world: &mut World) {
     }
     .apply(world);
     SpawnPatty {
-        pos: Vec2::ZERO + Vec2::Y * 100.0,
+        pos: Vec2::Y * 100.0 + Vec2::X * -20.0,
         scale: Vec2::splat(1.5),
     }
     .apply(world);
