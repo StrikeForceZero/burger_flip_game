@@ -118,10 +118,10 @@ fn spawn_patty(In(config): In<SpawnPatty>, mut commands: Commands) {
 fn on_patty_add(
     trigger: Trigger<OnAdd, Patty>,
     mut commands: Commands,
-    pan_mesh: Res<PattyMesh>,
+    patty_mesh: Res<PattyMesh>,
     pan_material: Res<PattyMaterial>,
 ) {
-    let mesh = pan_mesh.clone_handle().expect("Patty mesh not initialized");
+    let mesh = patty_mesh.clone_handle().expect("Patty mesh not initialized");
     let material = pan_material
         .clone_handle()
         .expect("Patty material not initialized");
