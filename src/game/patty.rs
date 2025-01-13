@@ -26,7 +26,6 @@ pub struct Patty;
 #[reflect(Component)]
 #[component(on_remove=Self::on_remove)]
 pub struct PattyJoints {
-    mesh_root: Entity,
     physics: Vec<Entity>,
     mesh: Vec<Entity>,
 }
@@ -36,7 +35,6 @@ impl PattyJoints {
         [].into_iter()
             .chain(self.physics.clone())
             .chain(self.mesh.clone())
-            .chain(std::iter::once(self.mesh_root))
             .collect_vec()
     }
     fn on_remove(mut world: DeferredWorld, entity: Entity, _id: ComponentId) {
@@ -129,40 +127,31 @@ fn spawn_patty(
     mut commands: Commands,
     mut skinned_mesh_inverse_bindposes_assets: ResMut<Assets<SkinnedMeshInverseBindposes>>,
 ) {
-    let skinned_mesh_result = create_joint_entities(
+    let skinned_mesh = create_joint_entities(
         MeshOptions {
             segments: PATTY_PARTS,
-            width: PATTY_WIDTH * config.scale.x,
-            height: PATTY_HEIGHT * config.scale.y,
+            width: PATTY_WIDTH,
+            height: PATTY_HEIGHT,
         },
         &mut commands,
         &mut skinned_mesh_inverse_bindposes_assets,
     );
 
     let mut patty_joints = PattyJoints {
-        mesh_root: skinned_mesh_result.entity,
-        physics: Vec::with_capacity(skinned_mesh_result.skinned_mesh.joints.len()),
-        mesh: skinned_mesh_result.skinned_mesh.joints.clone(),
+        physics: Vec::with_capacity(skinned_mesh.joints.len()),
+        mesh: skinned_mesh.joints.clone(),
     };
 
-    // make sure mesh entities are scoped
-    commands
-        .entity(patty_joints.mesh_root)
-        .insert(StateScoped(Screen::Gameplay));
     for &joint in patty_joints.mesh.iter() {
         commands.entity(joint).insert((
             NoAutoCenterOfMass,
+            StateScoped(Screen::Gameplay),
             RigidBody::Dynamic,
             Collider::rectangle(PATTY_PART_WIDTH, PATTY_HEIGHT),
         ));
     }
 
-    for (&left, &right) in skinned_mesh_result
-        .skinned_mesh
-        .joints
-        .iter()
-        .tuple_windows()
-    {
+    for (&left, &right) in skinned_mesh.joints.iter().tuple_windows() {
         let half_width = PATTY_PART_WIDTH * config.scale / 2.0;
         let joint = commands
             .spawn((
@@ -177,17 +166,18 @@ fn spawn_patty(
         patty_joints.physics.push(joint);
     }
 
+    let first_joint = *skinned_mesh.joints.first().expect("no joints!");
     let translation = config.pos.extend(0.0);
     let transform_scale = config.scale.extend(1.0);
     commands
         .spawn((
             Patty,
+            patty_joints,
             StateScoped(Screen::Gameplay),
             Transform::from_translation(translation).with_scale(transform_scale),
-            skinned_mesh_result.skinned_mesh,
+            skinned_mesh,
         ))
-        .add_child(patty_joints.mesh_root)
-        .insert(patty_joints);
+        .add_child(first_joint);
 }
 
 fn on_patty_add(
@@ -354,7 +344,7 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
         normals.push([0.0, 0.0, 1.0]);
 
         // Each vertex is affected by two joints: the current and the next
-        if i < segments {
+        if i > 0 && i < segments {
             joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
             joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
 
@@ -362,7 +352,7 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
             joint_weights.push([0.5, 0.5, 0.0, 0.0]);
             joint_weights.push([0.5, 0.5, 0.0, 0.0]);
         } else {
-            // The last vertices are fully influenced by the last joint
+            // The first/last vertices are fully influenced by the first/last joint
             joint_indices.push([i as u16, i as u16, 0, 0]);
             joint_indices.push([i as u16, i as u16, 0, 0]);
 
@@ -400,54 +390,48 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
     .with_inserted_indices(Indices::U16(indices))
 }
 
-struct SkinnedMeshResult {
-    entity: Entity,
-    skinned_mesh: SkinnedMesh,
-}
-
 fn create_joint_entities(
     mesh_options: MeshOptions,
     commands: &mut Commands,
     skinned_mesh_inverse_bindposes_assets: &mut ResMut<Assets<SkinnedMeshInverseBindposes>>,
-) -> SkinnedMeshResult {
+) -> SkinnedMesh {
     let segment_width = mesh_options.segment_width();
     let MeshOptions {
         segments, width, ..
     } = mesh_options;
 
+    let translation = |ix| {
+        if ix == 0 {
+            Vec3::X * (-width / 2.0) + Vec3::X * (segment_width / 2.0)
+        } else {
+            Vec3::X * segment_width
+        }
+    };
+
     // Create the inverse bindpose matrices for the joints
     let inverse_bindposes = skinned_mesh_inverse_bindposes_assets.add(
-        (0..=segments)
-            .map(|i| {
-                Mat4::from_translation(Vec3::new(i as f32 * segment_width - width / 2.0, 0.0, 0.0))
-            })
+        (0..segments)
+            .map(|ix| Mat4::from_translation(translation(ix)))
             .collect_vec(),
     );
 
     // Create joint entities and attach them to a parent for easy animation
-    let parent = commands.spawn(MeshJointRoot).id();
-    let mut joint_entities = Vec::new();
+    let mut parent = None;
+    let joints = (0..segments)
+        .map(|ix| {
+            let joint = commands
+                .spawn((MeshJoint, Transform::from_translation(translation(ix))))
+                .id();
+            if let Some(parent) = parent {
+                commands.entity(parent).add_child(joint);
+            };
+            parent = Some(joint);
+            joint
+        })
+        .collect_vec();
 
-    for i in 0..=segments {
-        let joint = commands
-            .spawn((
-                MeshJoint,
-                Transform::from_translation(Vec3::new(
-                    i as f32 * segment_width - width / 2.0,
-                    0.0,
-                    0.0,
-                )),
-            ))
-            .id();
-        commands.entity(parent).add_child(joint);
-        joint_entities.push(joint);
-    }
-
-    SkinnedMeshResult {
-        entity: parent,
-        skinned_mesh: SkinnedMesh {
-            inverse_bindposes,
-            joints: joint_entities,
-        },
+    SkinnedMesh {
+        inverse_bindposes,
+        joints,
     }
 }
