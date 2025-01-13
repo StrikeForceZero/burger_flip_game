@@ -20,7 +20,7 @@ smart-default = "0.7"
 internal_bevy_auto_plugin_macros = { workspace = true }
 bevy = { workspace = true }
 bevy-inspector-egui = { version = "0.28.1" }
-avian2d = { version = "0.2", features = ["enhanced-determinism"] }
+avian2d = { git = "https://github.com/Jondolf/avian.git", rev = "6a65e8f491c1320ba94dd36c344df7c40bb6705d", features = ["enhanced-determinism"] }
 rand = "0.8"
 smart-default = { workspace = true }
 num-traits = "0.2"

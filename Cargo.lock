@@ -325,8 +325,7 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 [[package]]
 name = "avian2d"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e57956ec5f349024c6023defb05ba2ac58500771d37abddb1d1f6fcb0e0d8a70"
+source = "git+https://github.com/Jondolf/avian.git?rev=6a65e8f491c1320ba94dd36c344df7c40bb6705d#6a65e8f491c1320ba94dd36c344df7c40bb6705d"
 dependencies = [
  "avian_derive",
  "bevy",
@@ -347,8 +346,7 @@ dependencies = [
 [[package]]
 name = "avian_derive"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dd7a3e79be90cc09d87a43e1d9bf4f41c896f97cbd7d4fe4c3b79749106d285"
+source = "git+https://github.com/Jondolf/avian.git?rev=6a65e8f491c1320ba94dd36c344df7c40bb6705d#6a65e8f491c1320ba94dd36c344df7c40bb6705d"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
