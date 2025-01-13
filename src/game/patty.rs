@@ -110,6 +110,7 @@ fn spawn_patty(In(config): In<SpawnPatty>, mut commands: Commands) {
                 .with_local_anchor_1(Vec2::X * half_width)
                 .with_local_anchor_2(Vec2::NEG_X * half_width)
                 .with_compliance(0.0000001),
+            StateScoped(Screen::Gameplay),
         ));
     }
 }
