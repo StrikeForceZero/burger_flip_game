@@ -7,6 +7,7 @@ mod screens;
 mod theme;
 
 use avian2d::PhysicsPlugins;
+use avian2d::prelude::Gravity;
 use bevy::{
     asset::AssetMetaCheck,
     audio::{AudioPlugin, Volume},
@@ -61,6 +62,8 @@ impl Plugin for AppPlugin {
             WorldInspectorPlugin::default(),
             PhysicsPlugins::default(),
         ));
+
+        app.insert_resource(Gravity(Vec2::NEG_Y * 980.0));
 
         // Add other plugins.
         app.add_plugins((
