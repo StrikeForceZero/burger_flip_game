@@ -68,6 +68,11 @@ pub struct MeshJointRoot;
 pub struct MeshJoint;
 
 #[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
+pub struct MeshJointIx(usize);
+
+#[auto_register_type]
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
@@ -91,6 +96,12 @@ impl PattyMaterial {
     }
 }
 
+#[auto_register_type]
+#[auto_init_resource]
+#[derive(Resource, Debug, Default, Clone, Reflect)]
+#[reflect(Resource)]
+pub struct SelectedJoint(usize);
+
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(PreStartup, (init_mesh, init_material).chain());
@@ -102,6 +113,52 @@ pub(crate) fn plugin(app: &mut App) {
     );
     app.add_observer(on_patty_add);
     app.add_observer(on_patty_remove);
+    app.add_systems(Update, (select_joint, manipulate_single_joint).chain());
+}
+
+fn select_joint(
+    mut selected_joint: ResMut<SelectedJoint>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    for key in keyboard_input.get_just_pressed() {
+        let new_selected = match key {
+            KeyCode::Digit1 => 0,
+            KeyCode::Digit2 => 1,
+            KeyCode::Digit3 => 2,
+            KeyCode::Digit4 => 3,
+            KeyCode::Digit5 => 4,
+            KeyCode::Digit6 => 5,
+            KeyCode::Digit7 => 6,
+            _ => continue,
+        };
+        log::debug!("selection changed: {} -> {new_selected}", selected_joint.0);
+        selected_joint.0 = new_selected;
+    }
+}
+
+fn manipulate_single_joint(
+    selected_joint: Res<SelectedJoint>,
+    mut joint_query: Query<(&mut Transform, &MeshJointIx)>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    for (mut transform, &MeshJointIx(ix)) in joint_query.iter_mut() {
+        if ix != selected_joint.0 {
+            continue;
+        }
+        // Replace with the specific joint name
+        if keyboard_input.pressed(KeyCode::KeyW) {
+            transform.translation.y += 1.0; // Move up
+        }
+        if keyboard_input.pressed(KeyCode::KeyS) {
+            transform.translation.y -= 1.0; // Move down
+        }
+        if keyboard_input.pressed(KeyCode::KeyA) {
+            transform.translation.x -= 1.0; // Move left
+        }
+        if keyboard_input.pressed(KeyCode::KeyD) {
+            transform.translation.x += 1.0; // Move right
+        }
+    }
 }
 
 #[derive(Debug, SmartDefault)]
@@ -142,11 +199,10 @@ fn spawn_patty(
         mesh: skinned_mesh.joints.clone(),
     };
 
-    for &joint in patty_joints.mesh.iter() {
+    for &joint in patty_joints.mesh.iter().skip(1) {
         commands.entity(joint).insert((
-            NoAutoCenterOfMass,
-            StateScoped(Screen::Gameplay),
             RigidBody::Dynamic,
+            NoAutoCenterOfMass,
             Collider::rectangle(PATTY_PART_WIDTH, PATTY_HEIGHT),
         ));
     }
@@ -330,34 +386,40 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
 
     for i in 0..=segments {
         let x = i as f32 * segment_width - width / 2.0; // Center the rectangle on the X-axis
+        let v = i as f32 / segments as f32; // Map texture width from 0.0 to 1.0
 
         // Add two vertices for the segment: top and bottom
         positions.push([x, -height / 2.0, 0.0]); // Bottom vertex
         positions.push([x, height / 2.0, 0.0]); // Top vertex
 
-        // Assign UV coordinates
-        uvs.push([i as f32 / segments as f32, 0.0]);
-        uvs.push([i as f32 / segments as f32, 1.0]);
+        // UV coordinates (full texture mapping)
+        uvs.push([v, 1.0]); // Right edge of the texture
+        uvs.push([v, 0.0]); // Left edge of the texture
 
         // Normals point forward in the Z direction
         normals.push([0.0, 0.0, 1.0]);
         normals.push([0.0, 0.0, 1.0]);
 
         // Each vertex is affected by two joints: the current and the next
-        if i > 0 && i < segments {
-            joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
-            joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
 
-            // Weight evenly between the two joints
-            joint_weights.push([0.5, 0.5, 0.0, 0.0]);
-            joint_weights.push([0.5, 0.5, 0.0, 0.0]);
+        if i == 0 {
+            // First vertex is fully influenced by the first joint
+            joint_indices.push([0, 0, 0, 0]);
+            joint_indices.push([0, 0, 0, 0]);
+            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
+            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
+        } else if i == segments {
+            // Last vertex is fully influenced by the last joint
+            joint_indices.push([segments as u16, 0, 0, 0]);
+            joint_indices.push([segments as u16, 0, 0, 0]);
+            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
+            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
         } else {
-            // The first/last vertices are fully influenced by the first/last joint
-            joint_indices.push([i as u16, i as u16, 0, 0]);
-            joint_indices.push([i as u16, i as u16, 0, 0]);
-
-            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
-            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
+            // Vertices between joints are influenced by two joints
+            joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
+            joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
+            joint_weights.push([0.5, 0.5, 0.0, 0.0]);
+            joint_weights.push([0.5, 0.5, 0.0, 0.0]);
         }
 
         // Add triangles if we're not at the far right
@@ -395,18 +457,63 @@ fn create_joint_entities(
     commands: &mut Commands,
     skinned_mesh_inverse_bindposes_assets: &mut ResMut<Assets<SkinnedMeshInverseBindposes>>,
 ) -> SkinnedMesh {
+    #[derive(Debug)]
+    enum Parent {
+        Root(Entity),
+        LR(Entity, Entity),
+    }
+    impl Parent {
+        fn set_left(&mut self, left: Entity) {
+            *self = match self {
+                Parent::Root(root) => Self::LR(left, *root),
+                Parent::LR(_, right) => Self::LR(left, *right),
+            }
+        }
+        fn set_right(&mut self, right: Entity) {
+            *self = match self {
+                Parent::Root(root) => Self::LR(*root, right),
+                Parent::LR(left, _) => Self::LR(*left, right),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    enum Direction {
+        Left,
+        Right,
+    }
+    impl Direction {
+        fn to_sign(&self) -> i32 {
+            match self {
+                Self::Left => 1,
+                Self::Right => -1,
+            }
+        }
+        fn from_ix(ix: usize) -> Self {
+            if ix % 2 == 0 {
+                Self::Left
+            } else {
+                Self::Right
+            }
+        }
+    }
+
     let segment_width = mesh_options.segment_width();
+    let translation = |ix| {
+        let direction = Direction::from_ix(ix);
+        let offset = if matches!(direction, Direction::Right) {
+            -1
+        } else {
+            0
+        };
+        let layer = (ix as i32 + offset) / 2;
+        let half_size = segment_width / 2.0 * direction.to_sign() as f32;
+        Vec3::X * layer as f32 * half_size + Vec3::X * half_size
+    };
+
     let MeshOptions {
         segments, width, ..
     } = mesh_options;
-
-    let translation = |ix| {
-        if ix == 0 {
-            Vec3::X * (-width / 2.0) + Vec3::X * (segment_width / 2.0)
-        } else {
-            Vec3::X * segment_width
-        }
-    };
 
     // Create the inverse bindpose matrices for the joints
     let inverse_bindposes = skinned_mesh_inverse_bindposes_assets.add(
@@ -416,19 +523,44 @@ fn create_joint_entities(
     );
 
     // Create joint entities and attach them to a parent for easy animation
-    let mut parent = None;
-    let joints = (0..segments)
-        .map(|ix| {
-            let joint = commands
-                .spawn((MeshJoint, Transform::from_translation(translation(ix))))
-                .id();
-            if let Some(parent) = parent {
-                commands.entity(parent).add_child(joint);
-            };
-            parent = Some(joint);
-            joint
-        })
-        .collect_vec();
+    let root = commands.spawn((MeshJointRoot, MeshJointIx(0))).id();
+    let mut parent = Parent::Root(root);
+    let mut joints = {
+        let mut joints = Vec::with_capacity(segments + 1);
+        joints.push(root);
+        joints
+    };
+    joints.extend(
+        (0..segments)
+            .map(|ix| {
+                let joint = commands
+                    .spawn((
+                        MeshJoint,
+                        MeshJointIx(ix + 1),
+                        Transform::from_translation(translation(ix)),
+                    ))
+                    .id();
+                {
+                    let direction = Direction::from_ix(ix);
+                    {
+                        let parent = match parent {
+                            Parent::Root(root) => root,
+                            Parent::LR(left, right) => match direction {
+                                Direction::Left => left,
+                                Direction::Right => right,
+                            },
+                        };
+                        commands.entity(parent).add_child(joint);
+                    }
+                    match direction {
+                        Direction::Left => parent.set_left(joint),
+                        Direction::Right => parent.set_right(joint),
+                    }
+                }
+                joint
+            })
+            .collect_vec(),
+    );
 
     SkinnedMesh {
         inverse_bindposes,
