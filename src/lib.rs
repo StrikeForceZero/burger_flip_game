@@ -5,6 +5,7 @@ mod demo;
 mod dev_tools;
 mod screens;
 mod theme;
+mod game;
 
 use avian2d::PhysicsPlugins;
 use avian2d::prelude::Gravity;
@@ -22,6 +23,11 @@ impl Plugin for AppPlugin {
         // Order new `AppStep` variants by adding them here:
         app.configure_sets(
             Update,
+            (AppSet::TickTimers, AppSet::RecordInput, AppSet::Update).chain(),
+        );
+
+        app.configure_sets(
+            FixedUpdate,
             (AppSet::TickTimers, AppSet::RecordInput, AppSet::Update).chain(),
         );
 
@@ -71,6 +77,7 @@ impl Plugin for AppPlugin {
             demo::plugin,
             screens::plugin,
             theme::plugin,
+            game::plugin,
         ));
 
         // Enable dev tools for dev builds.
