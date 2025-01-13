@@ -24,6 +24,7 @@ avian2d = { git = "https://github.com/Jondolf/avian.git", rev = "6a65e8f491c1320
 rand = "0.8"
 smart-default = { workspace = true }
 num-traits = "0.2"
+itertools = "0.14"
 # Compile low-severity logs out of native builds for performance.
 log = { version = "0.4", features = [
     "max_level_debug",
