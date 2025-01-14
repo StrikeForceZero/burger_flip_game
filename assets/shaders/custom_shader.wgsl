@@ -18,29 +18,25 @@ struct VertexInput {
 };
 
 struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
+    @builtin(position) clip_position: vec4<f32>,
     @location(0) blend_color: vec4<f32>,
-    @location(1) offset: vec2<f32>, // Pass offset to the fragment shader
 };
 
 @vertex
 fn vertex(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    let deformed_position = vec4<f32>(input.position.xy + input.offset, input.position.z, 1.0);
-
-    out.position = mesh2d_position_local_to_clip(
-        get_world_from_local(input.instance_index),
+    let deformed_position = vec4<f32>(input.position.xy - input.offset.xy, input.position.z, 1.0);
+    let model = get_world_from_local(input.instance_index);
+    out.clip_position = mesh2d_position_local_to_clip(
+        model,
         deformed_position,
     );
     out.blend_color = input.blend_color;
-    // Pass the offset to the fragment shader
-    out.offset = input.offset;
     return out;
 }
 
 struct FragmentInput {
     @location(0) blend_color: vec4<f32>,
-    @location(1) offset: vec2<f32>, // Receive offset in fragment shader
 };
 
 @fragment

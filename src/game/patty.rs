@@ -83,7 +83,23 @@ pub struct MeshJointIx(usize);
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
-pub struct OwnedVertices([usize; 4]);
+pub struct OwnedVertices {
+    top_left: usize,
+    bottom_left: usize,
+    top_right: usize,
+    bottom_right: usize,
+}
+
+impl From<[usize; 4]> for OwnedVertices {
+    fn from(vertices: [usize; 4]) -> Self {
+        Self {
+            top_left: vertices[0],
+            bottom_left: vertices[1],
+            top_right: vertices[2],
+            bottom_right: vertices[3],
+        }
+    }
+}
 
 #[auto_register_type]
 #[auto_init_resource]
@@ -179,12 +195,12 @@ pub(crate) fn plugin(app: &mut App) {
 
 fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
-    mesh_q: Query<&Mesh2d>,
+    mesh_q: Query<(&Mesh2d, &GlobalTransform)>,
     parents: Query<&Parent>,
-    joints: Query<(Entity, &Transform, &OwnedVertices), With<MeshJoint>>,
+    joints: Query<(Entity, &GlobalTransform, &OwnedVertices), With<MeshJoint>>,
 ) {
-    for (entity, transform, &OwnedVertices(vertices_ix)) in joints.iter() {
-        let Some(Mesh2d(mesh_handle)) = parents
+    for (entity, global_transform, owned_vertices) in joints.iter() {
+        let Some((Mesh2d(mesh_handle), mesh_global_transform)) = parents
             .iter_ancestors(entity)
             .find_map(|parent| mesh_q.get(parent).ok())
         else {
@@ -195,9 +211,25 @@ fn update_offsets(
             if let Some(VertexAttributeValues::Float32x2(ref mut instance_offsets)) =
                 mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET)
             {
-                for ix in vertices_ix {
-                    instance_offsets[ix] = transform.translation.truncate().to_array()
-                }
+                let xy = -global_transform
+                    .reparented_to(mesh_global_transform)
+                    .translation
+                    .truncate();
+                const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
+                const TOP_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, HALF_WIDTH);
+                const BOTTOM_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, -HALF_WIDTH);
+                const TOP_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, HALF_WIDTH);
+                const BOTTOM_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, -HALF_WIDTH);
+
+                let top_left = xy + TOP_LEFT;
+                let bottom_left = xy + BOTTOM_LEFT;
+                let top_right = xy + TOP_RIGHT;
+                let bottom_right = xy + BOTTOM_RIGHT;
+
+                instance_offsets[owned_vertices.top_left] = top_left.to_array();
+                instance_offsets[owned_vertices.bottom_left] = bottom_left.to_array();
+                instance_offsets[owned_vertices.top_right] = top_right.to_array();
+                instance_offsets[owned_vertices.bottom_right] = bottom_right.to_array();
             } else {
                 warn!("Mesh does not have Instance_Offset attribute.");
             }
@@ -587,8 +619,8 @@ fn create_joint_entities(mesh_options: MeshOptions, commands: &mut Commands) -> 
                     .spawn((
                         MeshJoint,
                         MeshJointIx(ix + 1),
-                        OwnedVertices(vertex_indices_for_joint(ix, segments)),
-                        Transform::from_translation(translation(ix)),
+                        OwnedVertices::from(vertex_indices_for_joint(ix, segments)),
+                        // Transform::from_translation(translation(ix)),
                     ))
                     .id();
                 {
