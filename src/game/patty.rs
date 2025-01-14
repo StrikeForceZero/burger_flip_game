@@ -84,19 +84,19 @@ pub struct MeshJointIx(usize);
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
 pub struct OwnedVertices {
-    top_left: usize,
     bottom_left: usize,
-    top_right: usize,
+    top_left: usize,
     bottom_right: usize,
+    top_right: usize,
 }
 
 impl From<[usize; 4]> for OwnedVertices {
     fn from(vertices: [usize; 4]) -> Self {
         Self {
-            top_left: vertices[0],
-            bottom_left: vertices[1],
-            top_right: vertices[2],
-            bottom_right: vertices[3],
+            bottom_left: vertices[0],
+            top_left: vertices[1],
+            bottom_right: vertices[2],
+            top_right: vertices[3],
         }
     }
 }
@@ -195,12 +195,12 @@ pub(crate) fn plugin(app: &mut App) {
 
 fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
-    mesh_q: Query<(&Mesh2d, &GlobalTransform)>,
+    mesh_q: Query<(&Mesh2d, &Transform, &GlobalTransform)>,
     parents: Query<&Parent>,
     joints: Query<(Entity, &GlobalTransform, &OwnedVertices), With<MeshJoint>>,
 ) {
     for (entity, global_transform, owned_vertices) in joints.iter() {
-        let Some((Mesh2d(mesh_handle), mesh_global_transform)) = parents
+        let Some((Mesh2d(mesh_handle), mesh_transform, mesh_global_transform)) = parents
             .iter_ancestors(entity)
             .find_map(|parent| mesh_q.get(parent).ok())
         else {
@@ -211,7 +211,7 @@ fn update_offsets(
             if let Some(VertexAttributeValues::Float32x2(ref mut instance_offsets)) =
                 mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET)
             {
-                let xy = -global_transform
+                let xy = global_transform
                     .reparented_to(mesh_global_transform)
                     .translation
                     .truncate();
@@ -221,10 +221,10 @@ fn update_offsets(
                 const TOP_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, HALF_WIDTH);
                 const BOTTOM_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, -HALF_WIDTH);
 
-                let top_left = xy + TOP_LEFT;
-                let bottom_left = xy + BOTTOM_LEFT;
-                let top_right = xy + TOP_RIGHT;
-                let bottom_right = xy + BOTTOM_RIGHT;
+                let top_left = xy + TOP_LEFT * mesh_transform.scale.truncate();
+                let bottom_left = xy + BOTTOM_LEFT * mesh_transform.scale.truncate();
+                let top_right = xy + TOP_RIGHT * mesh_transform.scale.truncate();
+                let bottom_right = xy + BOTTOM_RIGHT * mesh_transform.scale.truncate();
 
                 instance_offsets[owned_vertices.top_left] = top_left.to_array();
                 instance_offsets[owned_vertices.bottom_left] = bottom_left.to_array();
@@ -526,6 +526,10 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
         }
     }
 
+    for (ix, pos) in positions.iter().enumerate() {
+        println!("{ix} {pos:?}");
+    }
+
     // Create the mesh
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -665,8 +669,8 @@ fn vertex_indices_for_joint(joint_skeleton_ix: usize, segments: usize) -> [usize
     // Return the 4 vertex indices for this segment
     [
         base_index,     // Bottom-left
-        base_index + 1, // Bottom-right
-        base_index + 2, // Top-left
+        base_index + 1, // Top-left
+        base_index + 2, // Bottom-right
         base_index + 3, // Top-right
     ]
 }
