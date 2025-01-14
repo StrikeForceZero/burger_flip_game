@@ -198,10 +198,10 @@ fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
     mesh_q: Query<(&Mesh2d, Entity, &Transform, &GlobalTransform)>,
     parents: Query<&Parent>,
-    joints: Query<(Entity, &GlobalTransform, &OwnedVertices), With<MeshJoint>>,
+    joints: Query<(Entity, &Transform, &GlobalTransform, &OwnedVertices), With<MeshJoint>>,
 ) {
     let mut mesh_point_offset_map = EntityHashMap::<HashMap<usize, Vec<Vec2>>>::default();
-    for (entity, global_transform, owned_vertices) in joints.iter() {
+    for (entity, transform, global_transform, owned_vertices) in joints.iter() {
         let Some((_, mesh_entity, mesh_transform, mesh_global_transform)) = parents
             .iter_ancestors(entity)
             .find_map(|parent| mesh_q.get(parent).ok())
@@ -209,10 +209,8 @@ fn update_offsets(
             panic!("joint {entity} has no ancestor with a mesh");
         };
 
-        let xy = global_transform
-            .reparented_to(mesh_global_transform)
-            .translation
-            .truncate();
+        let transform_with_offset = global_transform.reparented_to(mesh_global_transform);
+        let xy = transform_with_offset.translation.truncate();
         const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
         const HALF_HEIGHT: f32 = PATTY_HEIGHT / 2.0;
         const TOP_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, HALF_HEIGHT);
@@ -220,10 +218,24 @@ fn update_offsets(
         const TOP_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, HALF_HEIGHT);
         const BOTTOM_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, -HALF_HEIGHT);
 
-        let top_left = xy + TOP_LEFT;
-        let bottom_left = xy + BOTTOM_LEFT;
-        let top_right = xy + TOP_RIGHT;
-        let bottom_right = xy + BOTTOM_RIGHT;
+        fn rotate_2d(center: Vec2, offset: Vec2, rotation_angle: f32) -> Vec2 {
+            let radians = rotation_angle.to_radians();
+            let cos_theta = radians.cos();
+            let sin_theta = radians.sin();
+
+            let rotated_offset = Vec2::new(
+                offset.x * cos_theta - offset.y * sin_theta,
+                offset.x * sin_theta + offset.y * cos_theta,
+            );
+
+            center + rotated_offset
+        }
+
+        let rotation = global_transform.rotation().to_euler(EulerRot::ZXY).0;
+        let top_left = rotate_2d(xy, TOP_LEFT, rotation);
+        let bottom_left = rotate_2d(xy, BOTTOM_LEFT, rotation);
+        let top_right = rotate_2d(xy, TOP_RIGHT, rotation);
+        let bottom_right = rotate_2d(xy, BOTTOM_RIGHT, rotation);
 
         let points = mesh_point_offset_map.entry(mesh_entity).or_default();
         points
@@ -262,18 +274,6 @@ fn update_offsets(
                 }
                 avg /= len as f32;
                 avg
-            }
-
-            for ix in 0..(PATTY_PARTS * 2 + 2) {
-                println!(
-                    "{ix}: {:?}",
-                    points
-                        .get(&ix)
-                        .unwrap_or(&Vec::new())
-                        .iter()
-                        .map(|v| v.to_array())
-                        .collect::<Vec<_>>()
-                );
             }
             for (point, positions) in points {
                 instance_offsets[point] = into_avg(positions).to_array();
