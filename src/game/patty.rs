@@ -3,7 +3,7 @@ use crate::AppSet;
 use avian2d::prelude::*;
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::component::ComponentId;
-use bevy::ecs::entity::EntityHashSet;
+use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
 use bevy::ecs::world::DeferredWorld;
 use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
@@ -16,6 +16,7 @@ use bevy::render::render_resource::{
     AsBindGroup, RenderPipelineDescriptor, ShaderRef, SpecializedMeshPipelineError, VertexFormat,
 };
 use bevy::sprite::{Material2d, Material2dKey, Material2dPlugin};
+use bevy::utils::HashMap;
 use bevy::window::PrimaryWindow;
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
 use itertools::Itertools;
@@ -195,46 +196,91 @@ pub(crate) fn plugin(app: &mut App) {
 
 fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
-    mesh_q: Query<(&Mesh2d, &Transform, &GlobalTransform)>,
+    mesh_q: Query<(&Mesh2d, Entity, &Transform, &GlobalTransform)>,
     parents: Query<&Parent>,
     joints: Query<(Entity, &GlobalTransform, &OwnedVertices), With<MeshJoint>>,
 ) {
+    let mut mesh_point_offset_map = EntityHashMap::<HashMap<usize, Vec<Vec2>>>::default();
     for (entity, global_transform, owned_vertices) in joints.iter() {
-        let Some((Mesh2d(mesh_handle), mesh_transform, mesh_global_transform)) = parents
+        let Some((_, mesh_entity, mesh_transform, mesh_global_transform)) = parents
             .iter_ancestors(entity)
             .find_map(|parent| mesh_q.get(parent).ok())
         else {
             panic!("joint {entity} has no ancestor with a mesh");
         };
+
+        let xy = global_transform
+            .reparented_to(mesh_global_transform)
+            .translation
+            .truncate();
+        const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
+        const HALF_HEIGHT: f32 = PATTY_HEIGHT / 2.0;
+        const TOP_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, HALF_HEIGHT);
+        const BOTTOM_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, -HALF_HEIGHT);
+        const TOP_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, HALF_HEIGHT);
+        const BOTTOM_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, -HALF_HEIGHT);
+
+        let top_left = xy + TOP_LEFT;
+        let bottom_left = xy + BOTTOM_LEFT;
+        let top_right = xy + TOP_RIGHT;
+        let bottom_right = xy + BOTTOM_RIGHT;
+
+        let points = mesh_point_offset_map.entry(mesh_entity).or_default();
+        points
+            .entry(owned_vertices.top_left)
+            .or_default()
+            .push(top_left);
+        points
+            .entry(owned_vertices.top_right)
+            .or_default()
+            .push(top_right);
+        points
+            .entry(owned_vertices.bottom_left)
+            .or_default()
+            .push(bottom_left);
+        points
+            .entry(owned_vertices.bottom_right)
+            .or_default()
+            .push(bottom_right);
+    }
+    for (entity, points) in mesh_point_offset_map {
+        let Ok((Mesh2d(mesh_handle), ..)) = mesh_q.get(entity) else {
+            unreachable!();
+        };
         if let Some(mesh) = meshes.get_mut(mesh_handle) {
-            let vertex_count = mesh.count_vertices();
-            if let Some(VertexAttributeValues::Float32x2(ref mut instance_offsets)) =
-                mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET)
-            {
-                let xy = global_transform
-                    .reparented_to(mesh_global_transform)
-                    .translation
-                    .truncate();
-                const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
-                const TOP_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, HALF_WIDTH);
-                const BOTTOM_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, -HALF_WIDTH);
-                const TOP_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, HALF_WIDTH);
-                const BOTTOM_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, -HALF_WIDTH);
+            let Some(attr_value) = mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET) else {
+                panic!("Mesh does not have Instance_Offset attribute.");
+            };
+            let VertexAttributeValues::Float32x2(ref mut instance_offsets) = attr_value else {
+                panic!("Mesh attribute Instance_Offset is not of type Float32x2.");
+            };
+            fn into_avg(vectors: Vec<Vec2>) -> Vec2 {
+                let len = vectors.len();
+                let mut avg = Vec2::ZERO;
+                for point in vectors {
+                    avg += point;
+                }
+                avg /= len as f32;
+                avg
+            }
 
-                let top_left = xy + TOP_LEFT * mesh_transform.scale.truncate();
-                let bottom_left = xy + BOTTOM_LEFT * mesh_transform.scale.truncate();
-                let top_right = xy + TOP_RIGHT * mesh_transform.scale.truncate();
-                let bottom_right = xy + BOTTOM_RIGHT * mesh_transform.scale.truncate();
-
-                instance_offsets[owned_vertices.top_left] = top_left.to_array();
-                instance_offsets[owned_vertices.bottom_left] = bottom_left.to_array();
-                instance_offsets[owned_vertices.top_right] = top_right.to_array();
-                instance_offsets[owned_vertices.bottom_right] = bottom_right.to_array();
-            } else {
-                warn!("Mesh does not have Instance_Offset attribute.");
+            for ix in 0..(PATTY_PARTS * 2 + 2) {
+                println!(
+                    "{ix}: {:?}",
+                    points
+                        .get(&ix)
+                        .unwrap_or(&Vec::new())
+                        .iter()
+                        .map(|v| v.to_array())
+                        .collect::<Vec<_>>()
+                );
+            }
+            for (point, positions) in points {
+                instance_offsets[point] = into_avg(positions).to_array();
             }
         }
     }
+    println!();
 }
 
 fn select_joint(
@@ -295,7 +341,7 @@ impl Command for SpawnPatty {
     }
 }
 
-const PATTY_PARTS: usize = 6;
+const PATTY_PARTS: usize = 2;
 const PATTY_WIDTH: f32 = 100.0;
 const PATTY_PART_WIDTH: f32 = PATTY_WIDTH / PATTY_PARTS as f32;
 const PATTY_HEIGHT: f32 = 20.0;
