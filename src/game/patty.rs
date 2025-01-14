@@ -5,9 +5,17 @@ use bevy::asset::RenderAssetUsages;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::ecs::world::DeferredWorld;
+use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
 use bevy::render::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
-use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
+use bevy::render::mesh::{
+    Indices, MeshVertexAttribute, MeshVertexBufferLayoutRef, PrimitiveTopology,
+    VertexAttributeValues,
+};
+use bevy::render::render_resource::{
+    AsBindGroup, RenderPipelineDescriptor, ShaderRef, SpecializedMeshPipelineError, VertexFormat,
+};
+use bevy::sprite::{Material2d, Material2dKey, Material2dPlugin};
 use bevy::window::PrimaryWindow;
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
 use itertools::Itertools;
@@ -73,6 +81,11 @@ pub struct MeshJoint;
 pub struct MeshJointIx(usize);
 
 #[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
+pub struct OwnedVertices([usize; 4]);
+
+#[auto_register_type]
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
@@ -88,10 +101,10 @@ impl PattyMesh {
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
-pub struct PattyMaterial(Option<MeshMaterial2d<ColorMaterial>>);
+pub struct PattyMaterial(Option<MeshMaterial2d<CustomMaterial>>);
 
 impl PattyMaterial {
-    pub fn clone_handle(&self) -> Option<MeshMaterial2d<ColorMaterial>> {
+    pub fn clone_handle(&self) -> Option<MeshMaterial2d<CustomMaterial>> {
         self.0.clone()
     }
 }
@@ -102,8 +115,53 @@ impl PattyMaterial {
 #[reflect(Resource)]
 pub struct SelectedJoint(usize);
 
+#[derive(Asset, AsBindGroup, TypePath, Default, Debug, Clone)]
+#[type_path = "burger_flip_game::CustomMaterial"]
+pub struct CustomMaterial {
+    #[uniform(0)]
+    pub color: LinearRgba,
+}
+
+const CUSTOM_MATERIAL_PATH: &str = "shaders/custom_shader.wgsl";
+
+impl Material2d for CustomMaterial {
+    fn fragment_shader() -> ShaderRef {
+        CUSTOM_MATERIAL_PATH.into()
+    }
+
+    fn vertex_shader() -> ShaderRef {
+        CUSTOM_MATERIAL_PATH.into()
+    }
+
+    fn specialize(
+        descriptor: &mut RenderPipelineDescriptor,
+        layout: &MeshVertexBufferLayoutRef,
+        _key: Material2dKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        let mut vertex_attributes = Vec::new();
+        if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
+            vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
+        }
+        if layout.0.contains(ATTRIBUTE_BLEND_COLOR) {
+            vertex_attributes.push(ATTRIBUTE_BLEND_COLOR.at_shader_location(1));
+        }
+        if layout.0.contains(ATTRIBUTE_INSTANCE_OFFSET) {
+            vertex_attributes.push(ATTRIBUTE_INSTANCE_OFFSET.at_shader_location(2));
+        }
+        let vertex_layout = layout.0.get_layout(&vertex_attributes)?;
+        descriptor.vertex.buffers = vec![vertex_layout];
+        Ok(())
+    }
+}
+
+const ATTRIBUTE_BLEND_COLOR: MeshVertexAttribute =
+    MeshVertexAttribute::new("BlendColor", 111111111_u64, VertexFormat::Float32x4);
+pub const ATTRIBUTE_INSTANCE_OFFSET: MeshVertexAttribute =
+    MeshVertexAttribute::new("Instance_Offset", 222222222_u64, VertexFormat::Float32x2); // 2D offsets
+
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {
+    app.add_plugins(Material2dPlugin::<CustomMaterial>::default());
     app.add_systems(PreStartup, (init_mesh, init_material).chain());
     app.add_systems(
         FixedUpdate,
@@ -113,7 +171,38 @@ pub(crate) fn plugin(app: &mut App) {
     );
     app.add_observer(on_patty_add);
     app.add_observer(on_patty_remove);
-    app.add_systems(Update, (select_joint, manipulate_single_joint).chain());
+    app.add_systems(
+        Update,
+        (select_joint, manipulate_single_joint, update_offsets).chain(),
+    );
+}
+
+fn update_offsets(
+    mut meshes: ResMut<Assets<Mesh>>,
+    mesh_q: Query<&Mesh2d>,
+    parents: Query<&Parent>,
+    joints: Query<(Entity, &Transform, &OwnedVertices), With<MeshJoint>>,
+) {
+    for (entity, transform, &OwnedVertices(vertices_ix)) in joints.iter() {
+        let Some(Mesh2d(mesh_handle)) = parents
+            .iter_ancestors(entity)
+            .find_map(|parent| mesh_q.get(parent).ok())
+        else {
+            panic!("joint {entity} has no ancestor with a mesh");
+        };
+        if let Some(mesh) = meshes.get_mut(mesh_handle) {
+            let vertex_count = mesh.count_vertices();
+            if let Some(VertexAttributeValues::Float32x2(ref mut instance_offsets)) =
+                mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET)
+            {
+                for ix in vertices_ix {
+                    instance_offsets[ix] = transform.translation.truncate().to_array()
+                }
+            } else {
+                warn!("Mesh does not have Instance_Offset attribute.");
+            }
+        }
+    }
 }
 
 fn select_joint(
@@ -179,24 +268,19 @@ const PATTY_WIDTH: f32 = 100.0;
 const PATTY_PART_WIDTH: f32 = PATTY_WIDTH / PATTY_PARTS as f32;
 const PATTY_HEIGHT: f32 = 20.0;
 
-fn spawn_patty(
-    In(config): In<SpawnPatty>,
-    mut commands: Commands,
-    mut skinned_mesh_inverse_bindposes_assets: ResMut<Assets<SkinnedMeshInverseBindposes>>,
-) {
-    let skinned_mesh = create_joint_entities(
+fn spawn_patty(In(config): In<SpawnPatty>, mut commands: Commands) {
+    let joints = create_joint_entities(
         MeshOptions {
             segments: PATTY_PARTS,
             width: PATTY_WIDTH,
             height: PATTY_HEIGHT,
         },
         &mut commands,
-        &mut skinned_mesh_inverse_bindposes_assets,
     );
 
     let mut patty_joints = PattyJoints {
-        physics: Vec::with_capacity(skinned_mesh.joints.len()),
-        mesh: skinned_mesh.joints.clone(),
+        physics: Vec::with_capacity(joints.len()),
+        mesh: joints.clone(),
     };
 
     for &joint in patty_joints.mesh.iter().skip(1) {
@@ -207,7 +291,7 @@ fn spawn_patty(
         ));
     }
 
-    for (&left, &right) in skinned_mesh.joints.iter().tuple_windows() {
+    for (&left, &right) in joints.iter().tuple_windows() {
         let half_width = PATTY_PART_WIDTH * config.scale / 2.0;
         let joint = commands
             .spawn((
@@ -222,7 +306,7 @@ fn spawn_patty(
         patty_joints.physics.push(joint);
     }
 
-    let first_joint = *skinned_mesh.joints.first().expect("no joints!");
+    let first_joint = *joints.first().expect("no joints!");
     let translation = config.pos.extend(0.0);
     let transform_scale = config.scale.extend(1.0);
     commands
@@ -231,7 +315,6 @@ fn spawn_patty(
             patty_joints,
             StateScoped(Screen::Gameplay),
             Transform::from_translation(translation).with_scale(transform_scale),
-            skinned_mesh,
         ))
         .add_child(first_joint);
 }
@@ -317,14 +400,15 @@ fn init_mesh(mut pan_mesh: ResMut<PattyMesh>, mut meshes: ResMut<Assets<Mesh>>) 
 
 fn init_material(
     mut pan_material: ResMut<PattyMaterial>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<CustomMaterial>>,
 ) {
     if pan_material.0.is_some() {
         return;
     }
-    let handle = materials.add(ColorMaterial::from_color(
-        bevy::color::palettes::tailwind::AMBER_950,
-    ));
+    let handle = materials.add(CustomMaterial {
+        color: Color::Srgba(bevy::color::palettes::tailwind::AMBER_950).to_linear(),
+        ..default()
+    });
     pan_material.0 = Some(MeshMaterial2d(handle));
 }
 
@@ -377,10 +461,6 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
     let mut uvs = Vec::new();
     // Normals
     let mut normals = Vec::new();
-    // Joint indices
-    let mut joint_indices = Vec::new();
-    // Joint weights
-    let mut joint_weights = Vec::new();
     // Indices for triangles
     let mut indices = Vec::new();
 
@@ -399,28 +479,6 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
         // Normals point forward in the Z direction
         normals.push([0.0, 0.0, 1.0]);
         normals.push([0.0, 0.0, 1.0]);
-
-        // Each vertex is affected by two joints: the current and the next
-
-        if i == 0 {
-            // First vertex is fully influenced by the first joint
-            joint_indices.push([0, 0, 0, 0]);
-            joint_indices.push([0, 0, 0, 0]);
-            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
-            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
-        } else if i == segments {
-            // Last vertex is fully influenced by the last joint
-            joint_indices.push([segments as u16, 0, 0, 0]);
-            joint_indices.push([segments as u16, 0, 0, 0]);
-            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
-            joint_weights.push([1.0, 0.0, 0.0, 0.0]);
-        } else {
-            // Vertices between joints are influenced by two joints
-            joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
-            joint_indices.push([i as u16, (i + 1) as u16, 0, 0]);
-            joint_weights.push([0.5, 0.5, 0.0, 0.0]);
-            joint_weights.push([0.5, 0.5, 0.0, 0.0]);
-        }
 
         // Add triangles if we're not at the far right
         if i > 0 {
@@ -441,22 +499,21 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     )
+    .with_inserted_attribute(
+        ATTRIBUTE_BLEND_COLOR,
+        VertexAttributeValues::Float32x4(vec![[0.0, 0.0, 0.0, 1.0]; positions.len()]),
+    )
+    .with_inserted_attribute(
+        ATTRIBUTE_INSTANCE_OFFSET,
+        VertexAttributeValues::Float32x2(vec![[0.0, 0.0]; positions.len()]),
+    )
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_JOINT_INDEX,
-        VertexAttributeValues::Uint16x4(joint_indices),
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, joint_weights)
     .with_inserted_indices(Indices::U16(indices))
 }
 
-fn create_joint_entities(
-    mesh_options: MeshOptions,
-    commands: &mut Commands,
-    skinned_mesh_inverse_bindposes_assets: &mut ResMut<Assets<SkinnedMeshInverseBindposes>>,
-) -> SkinnedMesh {
+fn create_joint_entities(mesh_options: MeshOptions, commands: &mut Commands) -> Vec<Entity> {
     #[derive(Debug)]
     enum Parent {
         Root(Entity),
@@ -515,13 +572,6 @@ fn create_joint_entities(
         segments, width, ..
     } = mesh_options;
 
-    // Create the inverse bindpose matrices for the joints
-    let inverse_bindposes = skinned_mesh_inverse_bindposes_assets.add(
-        (0..segments)
-            .map(|ix| Mat4::from_translation(translation(ix)))
-            .collect_vec(),
-    );
-
     // Create joint entities and attach them to a parent for easy animation
     let root = commands.spawn((MeshJointRoot, MeshJointIx(0))).id();
     let mut parent = Parent::Root(root);
@@ -537,6 +587,7 @@ fn create_joint_entities(
                     .spawn((
                         MeshJoint,
                         MeshJointIx(ix + 1),
+                        OwnedVertices(vertex_indices_for_joint(ix, segments)),
                         Transform::from_translation(translation(ix)),
                     ))
                     .id();
@@ -562,8 +613,53 @@ fn create_joint_entities(
             .collect_vec(),
     );
 
-    SkinnedMesh {
-        inverse_bindposes,
-        joints,
+    joints
+}
+
+fn vertex_indices_for_joint(joint_skeleton_ix: usize, segments: usize) -> [usize; 4] {
+    // Determine if the segment is on the left or right
+    let is_left = joint_skeleton_ix % 2 == 0;
+
+    // Calculate the segment number (0-based index for each direction)
+    let segment_number = joint_skeleton_ix / 2;
+
+    // Calculate the base vertex index for this joint
+    let base_index = if is_left {
+        segments - (segment_number + 1) * 2 // Left segments go backward
+    } else {
+        segments + segment_number * 2 // Right segments go forward
+    };
+
+    // Return the 4 vertex indices for this segment
+    [
+        base_index,     // Bottom-left
+        base_index + 1, // Bottom-right
+        base_index + 2, // Top-left
+        base_index + 3, // Top-right
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_vertex_indices_for_joint() {
+        for ix in 0..PATTY_PARTS {
+            println!("{ix} {:?}", vertex_indices_for_joint(ix, PATTY_PARTS));
+        }
+        let sets = (0..2)
+            .map(|ix| vertex_indices_for_joint(ix, 2))
+            .collect::<Vec<_>>();
+        assert_eq!(sets, vec![[0, 1, 2, 3], [2, 3, 4, 5]]);
+        let unique = (0..2)
+            .flat_map(|ix| vertex_indices_for_joint(ix, 2))
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        let mesh = create_horizontal_segmented_rectangle_with_joints(MeshOptions {
+            segments: 2,
+            width: 1.0,
+            height: 1.0,
+        });
+        assert_eq!(unique, mesh.count_vertices());
     }
 }
