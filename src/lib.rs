@@ -9,6 +9,10 @@ mod game;
 
 use avian2d::PhysicsPlugins;
 use avian2d::prelude::Gravity;
+use bevy::color::palettes::basic::WHITE;
+use bevy::render::settings::{RenderCreation, WgpuFeatures, WgpuSettings};
+use bevy::render::RenderPlugin;
+use bevy::sprite::{Wireframe2dConfig, Wireframe2dPlugin};
 use bevy::{
     asset::AssetMetaCheck,
     audio::{AudioPlugin, Volume},
@@ -34,34 +38,56 @@ impl Plugin for AppPlugin {
         // Spawn the main camera.
         app.add_systems(Startup, spawn_camera);
 
+        let default_plugins = DefaultPlugins
+            .set(AssetPlugin {
+                // Wasm builds will check for meta files (that don't exist) if this isn't set.
+                // This causes errors and even panics on web build on itch.
+                // See https://github.com/bevyengine/bevy_github_ci_template/issues/48.
+                meta_check: AssetMetaCheck::Never,
+                ..default()
+            })
+            .set(WindowPlugin {
+                primary_window: Window {
+                    title: "Burger Flip Game".to_string(),
+                    canvas: Some("#bevy".to_string()),
+                    fit_canvas_to_parent: true,
+                    prevent_default_event_handling: true,
+                    ..default()
+                }
+                .into(),
+                ..default()
+            })
+            .set(AudioPlugin {
+                global_volume: GlobalVolume {
+                    volume: Volume::new(0.3),
+                },
+                ..default()
+            });
+
+        #[cfg(feature = "wireframe")]
+        let default_plugins = default_plugins.set(RenderPlugin {
+            render_creation: RenderCreation::Automatic(WgpuSettings {
+                // WARN this is a native only feature. It will not work with webgl or webgpu
+                features: WgpuFeatures::POLYGON_MODE_LINE,
+                ..default()
+            }),
+            ..default()
+        });
+
         // Add Bevy plugins.
-        app.add_plugins(
-            DefaultPlugins
-                .set(AssetPlugin {
-                    // Wasm builds will check for meta files (that don't exist) if this isn't set.
-                    // This causes errors and even panics on web build on itch.
-                    // See https://github.com/bevyengine/bevy_github_ci_template/issues/48.
-                    meta_check: AssetMetaCheck::Never,
-                    ..default()
-                })
-                .set(WindowPlugin {
-                    primary_window: Window {
-                        title: "Burger Flip Game".to_string(),
-                        canvas: Some("#bevy".to_string()),
-                        fit_canvas_to_parent: true,
-                        prevent_default_event_handling: true,
-                        ..default()
-                    }
-                    .into(),
-                    ..default()
-                })
-                .set(AudioPlugin {
-                    global_volume: GlobalVolume {
-                        volume: Volume::new(0.3),
-                    },
-                    ..default()
-                }),
-        );
+        app.add_plugins(default_plugins);
+
+        #[cfg(feature = "wireframe")]
+        app.add_plugins(Wireframe2dPlugin)
+            .insert_resource(Wireframe2dConfig {
+                // The global wireframe config enables drawing of wireframes on every mesh,
+                // except those with `NoWireframe`. Meshes with `Wireframe` will always have a wireframe,
+                // regardless of the global configuration.
+                global: true,
+                // Controls the default color of all wireframes. Used as the default color for global wireframes.
+                // Can be changed per mesh using the `WireframeColor` component.
+                default_color: WHITE.into(),
+            });
 
         // Add 3rd party plugins
         app.add_plugins((
