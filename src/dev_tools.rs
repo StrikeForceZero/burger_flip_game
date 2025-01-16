@@ -1,5 +1,6 @@
 //! Development tools for the game. This plugin is only enabled in dev builds.
 
+use avian2d::prelude::PhysicsDebugPlugin;
 use bevy::{
     dev_tools::{
         states::log_transitions,
@@ -14,6 +15,9 @@ use crate::screens::Screen;
 pub(super) fn plugin(app: &mut App) {
     // Log `Screen` state transitions.
     app.add_systems(Update, log_transitions::<Screen>);
+    #[cfg(feature = "show_colliders")]
+    // Visualize Colliders
+    app.add_plugins(PhysicsDebugPlugin::default());
 
     // Toggle the debug overlay for UI.
     app.add_plugins(DebugUiPlugin);

@@ -55,7 +55,7 @@ dev_native = [
 ]
 wireframe = []
 skip_menu = []
-
+show_colliders = []
 
 # Idiomatic Bevy code often triggers these lints, and the CI workflow treats them as errors.
 # In some cases they may still signal poor code quality however, so consider commenting out these lines.
