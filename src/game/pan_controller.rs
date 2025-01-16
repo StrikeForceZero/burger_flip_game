@@ -1,4 +1,3 @@
-use std::f32::consts::PI;
 use crate::game::pan;
 use crate::game::pan::Pan;
 use crate::AppSet;
@@ -7,6 +6,7 @@ use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use internal_bevy_auto_plugin_macros::{auto_plugin, auto_register_type};
 use num_traits::real::Real;
+use std::f32::consts::PI;
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Reflect)]
