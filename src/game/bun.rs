@@ -30,23 +30,11 @@ pub struct Bun;
 #[reflect(Resource)]
 pub struct BunMesh(Option<Mesh2d>);
 
-impl BunMesh {
-    pub fn clone_handle(&self) -> Option<Mesh2d> {
-        self.0.clone()
-    }
-}
-
 #[auto_register_type]
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
 pub struct BunMaterial(Option<MeshMaterial2d<ColorMaterial>>);
-
-impl BunMaterial {
-    pub fn clone_handle(&self) -> Option<MeshMaterial2d<ColorMaterial>> {
-        self.0.clone()
-    }
-}
 
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {

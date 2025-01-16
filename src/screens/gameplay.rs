@@ -42,6 +42,7 @@ impl FromWorld for GameplayMusic {
     }
 }
 
+#[allow(unused)]
 fn play_gameplay_music(mut commands: Commands, mut music: ResMut<GameplayMusic>) {
     music.entity = Some(
         commands

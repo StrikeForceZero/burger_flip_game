@@ -96,18 +96,6 @@ impl Direction {
             Self::Right => 1,
         }
     }
-    fn is_left(&self) -> bool {
-        match self {
-            Self::Left => true,
-            Self::Right => false,
-        }
-    }
-    fn is_right(&self) -> bool {
-        match self {
-            Self::Left => false,
-            Self::Right => true,
-        }
-    }
 }
 
 #[auto_register_type]
@@ -137,24 +125,29 @@ impl MeshJoint {
             },
         }
     }
+    #[allow(unused)]
     fn left(&self) -> Entity {
         self.left
     }
+    #[allow(unused)]
     fn right(&self) -> Entity {
         self.right
     }
     fn lr(&self) -> (Entity, Entity) {
         (self.left, self.right)
     }
+    #[allow(unused)]
     fn direction(&self) -> Direction {
         self.direction
     }
+    #[allow(unused)]
     fn parent(&self) -> Entity {
         match self.direction {
             Direction::Left => self.right,
             Direction::Right => self.left,
         }
     }
+    #[allow(unused)]
     fn next(&self) -> Entity {
         match self.direction {
             Direction::Left => self.left,
@@ -201,23 +194,11 @@ impl OwnedVertices {
 #[reflect(Resource)]
 pub struct PattyMesh(Option<Mesh>);
 
-impl PattyMesh {
-    pub fn clone_mesh(&self) -> Option<Mesh> {
-        self.0.clone()
-    }
-}
-
 #[auto_register_type]
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
 pub struct PattyMaterial(Option<MeshMaterial2d<CustomMaterial>>);
-
-impl PattyMaterial {
-    pub fn clone_handle(&self) -> Option<MeshMaterial2d<CustomMaterial>> {
-        self.0.clone()
-    }
-}
 
 #[derive(SystemParam)]
 struct PattyMeshMaterialSystemParam<'w> {
@@ -800,6 +781,7 @@ fn create_segment_and_joint_entities(
     }
 
     impl SE {
+        #[allow(unused)]
         fn entity(&self) -> Entity {
             match *self {
                 SE::Segment(entity) => entity,
@@ -850,6 +832,7 @@ fn create_segment_and_joint_entities(
 
     #[derive(Debug)]
     enum Parent {
+        #[allow(unused)]
         Root(Entity),
         LR(SE, SE),
     }
@@ -883,6 +866,7 @@ fn create_segment_and_joint_entities(
                 Self::Root(_) => panic!("not initialized"),
             })
         }
+        #[allow(unused)]
         fn parent(&self, direction: Direction) -> Entity {
             match *self {
                 Parent::Root(root) => root,
@@ -992,12 +976,14 @@ fn create_segment_and_joint_entities(
                 Direction::Right => Self::Right(item),
             }
         }
+        #[allow(unused)]
         fn direction(&self) -> Direction {
             match self {
                 Self::Left(_) => Direction::Left,
                 Self::Right(_) => Direction::Right,
             }
         }
+        #[allow(unused)]
         fn item(&self) -> &T {
             match self {
                 Self::Left(item) => item,
