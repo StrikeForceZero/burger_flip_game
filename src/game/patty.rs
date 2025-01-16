@@ -274,9 +274,6 @@ impl Material2d for CustomMaterial {
         if layout.0.contains(ATTRIBUTE_BLEND_COLOR) {
             vertex_attributes.push(ATTRIBUTE_BLEND_COLOR.at_shader_location(1));
         }
-        if layout.0.contains(ATTRIBUTE_INSTANCE_OFFSET) {
-            vertex_attributes.push(ATTRIBUTE_INSTANCE_OFFSET.at_shader_location(2));
-        }
         let vertex_layout = layout.0.get_layout(&vertex_attributes)?;
         descriptor.vertex.buffers = vec![vertex_layout];
         Ok(())
@@ -285,8 +282,6 @@ impl Material2d for CustomMaterial {
 
 const ATTRIBUTE_BLEND_COLOR: MeshVertexAttribute =
     MeshVertexAttribute::new("BlendColor", 111111111_u64, VertexFormat::Float32x4);
-pub const ATTRIBUTE_INSTANCE_OFFSET: MeshVertexAttribute =
-    MeshVertexAttribute::new("Instance_Offset", 222222222_u64, VertexFormat::Float32x2); // 2D offsets
 
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {
@@ -316,34 +311,20 @@ fn update_offsets(
             &Mesh2d,
             &MeshJoint,
             &OwnedVertices,
-            &Transform,
             &GlobalTransform,
         ),
         (With<MeshJoint>, Without<MeshSegment>),
     >,
 ) {
-    for (entity, Mesh2d(mesh_handle), mesh_joint, owned_vertices, transform, global_transform) in
+    for (entity, Mesh2d(mesh_handle), mesh_joint, owned_vertices, global_transform) in
         joints_q.iter()
     {
-        let Some(&root_transform) = parents
-            .iter_ancestors(entity)
-            .find_map(|parent| root.get(parent).ok())
-            .clone()
-        else {
-            panic!("Failed to resolve root not found");
-        };
         let Ok((_, left_global_transform)) = mesh_segment_q.get(mesh_joint.left) else {
             panic!("Left mesh segment not found");
         };
         let Ok((_, right_global_transform)) = mesh_segment_q.get(mesh_joint.right) else {
             panic!("Right mesh segment not found");
         };
-        println!(
-            "left: {}, center: {}, right: {}",
-            left_global_transform.translation(),
-            global_transform.translation(),
-            right_global_transform.translation()
-        );
         let left_local_transform = left_global_transform.reparented_to(global_transform);
         let right_local_transform = right_global_transform.reparented_to(global_transform);
         const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
@@ -353,25 +334,21 @@ fn update_offsets(
         const TOP_RIGHT: Vec3 = Vec3::new(HALF_WIDTH, HALF_HEIGHT, 0.0);
         const BOTTOM_RIGHT: Vec3 = Vec3::new(HALF_WIDTH, -HALF_HEIGHT, 0.0);
 
-        let top_left = right_local_transform.transform_point(TOP_LEFT).truncate();
+        let top_left = right_local_transform.transform_point(TOP_LEFT);
 
-        let bottom_left = right_local_transform
-            .transform_point(BOTTOM_LEFT)
-            .truncate();
+        let bottom_left = right_local_transform.transform_point(BOTTOM_LEFT);
 
-        let top_right = left_local_transform.transform_point(TOP_RIGHT).truncate();
+        let top_right = left_local_transform.transform_point(TOP_RIGHT);
 
-        let bottom_right = left_local_transform
-            .transform_point(BOTTOM_RIGHT)
-            .truncate();
+        let bottom_right = left_local_transform.transform_point(BOTTOM_RIGHT);
 
         let Some(mesh) = meshes.get_mut(mesh_handle) else {
             panic!("MeshJoint mesh not found");
         };
-        let Some(attr_value) = mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET) else {
-            panic!("Mesh does not have Instance_Offset attribute.");
+        let Some(attr_value) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("Mesh does not have ATTRIBUTE_POSITION attribute.");
         };
-        let VertexAttributeValues::Float32x2(ref mut instance_offsets) = attr_value else {
+        let VertexAttributeValues::Float32x3(ref mut instance_offsets) = attr_value else {
             panic!("Mesh attribute Instance_Offset is not of type Float32x2.");
         };
 
@@ -627,10 +604,6 @@ fn create_patty_part_mesh(width: f32, height: f32) -> Mesh {
         .with_inserted_attribute(
             ATTRIBUTE_BLEND_COLOR,
             VertexAttributeValues::Float32x4(vec![[0.0, 0.0, 0.0, 1.0]; 4]),
-        )
-        .with_inserted_attribute(
-            ATTRIBUTE_INSTANCE_OFFSET,
-            VertexAttributeValues::Float32x2(vec![[0.0, 0.0]; 4]),
         )
 }
 

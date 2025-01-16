@@ -14,7 +14,6 @@ struct VertexInput {
     @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
     @location(1) blend_color: vec4<f32>,
-    @location(2) offset: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -25,11 +24,10 @@ struct VertexOutput {
 @vertex
 fn vertex(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    let deformed_position = vec4<f32>(input.position.xy + input.offset.xy, input.position.z, 1.0);
     let model = get_world_from_local(input.instance_index);
     out.clip_position = mesh2d_position_local_to_clip(
         model,
-        deformed_position,
+        vec4<f32>(input.position.xyz, 1.0),
     );
     out.blend_color = input.blend_color;
     return out;
