@@ -140,5 +140,9 @@ fn spawn_camera(mut commands: Commands) {
         // [ui node outlines](https://bevyengine.org/news/bevy-0-14/#ui-node-outline-gizmos)
         // for debugging. So it's good to have this here for future-proofing.
         IsDefaultUiCamera,
+        Camera {
+            clear_color: Color::linear_rgba(0.001, 0.001, 0.001, 1.0).into(),
+            ..default()
+        },
     ));
 }
