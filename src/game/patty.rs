@@ -53,6 +53,7 @@ impl PattyStructure {
     }
     fn all_maintained_entities(&self) -> Vec<Entity> {
         [].into_iter()
+            .chain(std::iter::once(self.root))
             .chain(self.physic_joints.clone())
             .chain(self.mesh_segments.clone())
             .collect_vec()
