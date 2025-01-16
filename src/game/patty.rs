@@ -334,7 +334,7 @@ fn check_patty_bun(
                     .iter_descendants(entity)
                     .filter_map(|child| rigid_bodies.get(child).ok())
                 {
-                    if linear_velocity.length() >= 3.0 {
+                    if linear_velocity.length() >= 5.0 {
                         to_freeze.clear();
                         break;
                     }
