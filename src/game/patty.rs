@@ -603,7 +603,7 @@ fn create_patty_part_mesh(width: f32, height: f32) -> Mesh {
         .build()
         .with_inserted_attribute(
             ATTRIBUTE_BLEND_COLOR,
-            VertexAttributeValues::Float32x4(vec![[0.0, 0.0, 0.0, 1.0]; 4]),
+            VertexAttributeValues::Float32x4(vec![[1.0, 1.0, 1.0, 1.0]; 4]),
         )
 }
 
