@@ -4,6 +4,7 @@ use crate::game::{PattyLanded, PattyOutOfBounds};
 use crate::screens::Screen;
 use crate::AppSet;
 use avian2d::prelude::*;
+use bevy::color::palettes::tailwind::ROSE_500;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
 use bevy::ecs::system::SystemParam;
@@ -90,7 +91,7 @@ pub enum Direction {
 }
 
 impl Direction {
-    fn to_sign(&self) -> i32 {
+    fn to_sign(self) -> i32 {
         match self {
             Self::Left => -1,
             Self::Right => 1,
@@ -667,8 +668,7 @@ fn init_material(
         return;
     }
     let handle = materials.add(CustomMaterial {
-        color: Color::Srgba(bevy::color::palettes::tailwind::ROSE_500).to_linear(),
-        ..default()
+        color: Color::Srgba(ROSE_500).to_linear(),
     });
     pan_material.0 = Some(MeshMaterial2d(handle));
 }
