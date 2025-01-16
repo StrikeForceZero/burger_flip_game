@@ -3,13 +3,13 @@ pub mod audio;
 mod demo;
 #[cfg(feature = "dev")]
 mod dev_tools;
+mod game;
 mod screens;
 mod theme;
-mod game;
 
 use crate::screens::Screen;
-use avian2d::PhysicsPlugins;
 use avian2d::prelude::Gravity;
+use avian2d::PhysicsPlugins;
 use bevy::color::palettes::basic::WHITE;
 use bevy::render::settings::{RenderCreation, WgpuFeatures, WgpuSettings};
 use bevy::render::RenderPlugin;
@@ -91,10 +91,7 @@ impl Plugin for AppPlugin {
             });
 
         // Add 3rd party plugins
-        app.add_plugins((
-            WorldInspectorPlugin::default(),
-            PhysicsPlugins::default(),
-        ));
+        app.add_plugins((WorldInspectorPlugin::default(), PhysicsPlugins::default()));
 
         app.insert_resource(Gravity(Vec2::NEG_Y * 980.0));
 
