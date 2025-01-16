@@ -408,7 +408,7 @@ impl Command for SpawnPatty {
     }
 }
 
-const PATTY_PARTS: usize = 7;
+const PATTY_PARTS: usize = 5;
 const PATTY_WIDTH: f32 = 100.0;
 const PATTY_PART_WIDTH: f32 = PATTY_WIDTH / PATTY_PARTS as f32;
 const PATTY_HEIGHT: f32 = 20.0;
@@ -437,8 +437,7 @@ fn spawn_patty(
         .chain(std::iter::once(&patty_structure.root))
     {
         commands.entity(entity).insert((
-            // RigidBody::Dynamic,
-            RigidBody::Kinematic,
+            RigidBody::Dynamic,
             NoAutoCenterOfMass,
             Collider::rectangle(PATTY_PART_WIDTH, PATTY_HEIGHT),
             pmmmsp.mesh(),
@@ -446,14 +445,14 @@ fn spawn_patty(
         ));
     }
 
-    let half_width = PATTY_PART_WIDTH * config.scale / 2.0;
+    // TODO: is squared really the right math?
+    let joint_edge_offset = PATTY_JOINT_WIDTH * config.scale.powf(2.0);
     patty_structure.physic_joints = Vec::with_capacity(patty_structure.mesh_joints.len() * 2);
     for (&entity, &(left, right)) in patty_structure.mesh_joints.iter() {
         commands.entity(entity).insert((
-            // RigidBody::Dynamic,
-            RigidBody::Kinematic,
+            RigidBody::Dynamic,
             NoAutoCenterOfMass,
-            Collider::circle(PATTY_JOINT_WIDTH),
+            Collider::circle(PATTY_JOINT_WIDTH / 2.0),
             // pmmmsp.mesh(),
             // pmmmsp.material(),
         ));
@@ -462,8 +461,8 @@ fn spawn_patty(
                 .spawn((
                     Name::new(format!("PattyJoint({left}, {right})")),
                     RevoluteJoint::new(left, right)
-                        .with_local_anchor_1(Vec2::X * half_width)
-                        .with_local_anchor_2(Vec2::NEG_X * half_width)
+                        .with_local_anchor_1(Vec2::X * joint_edge_offset)
+                        .with_local_anchor_2(Vec2::NEG_X * joint_edge_offset)
                         .with_compliance(0.0000001),
                     StateScoped(Screen::Gameplay),
                 ))
@@ -971,8 +970,8 @@ fn create_segment_and_joint_entities(
         // TODO: apparently all this effort isn't needed
         //  because we are using local transforms that already account for the previous parent transform
         let translation = match need_transform {
-            NeedsTransform::Segment(_) => dir * segment_width,
-            NeedsTransform::Joint(_) => dir * segment_width,
+            NeedsTransform::Segment(_) => dir * segment_width - dir * PATTY_JOINT_WIDTH,
+            NeedsTransform::Joint(_) => dir * segment_width - dir * PATTY_JOINT_WIDTH,
         };
         commands
             .entity(need_transform.entity())
