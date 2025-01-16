@@ -1,7 +1,16 @@
+use crate::game::patty::MeshSegmentRoot;
 use crate::screens::Screen;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
+
+#[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
+#[require(Name(|| "BunAreaSensor"))]
+#[require(Transform)]
+#[require(Visibility)]
+pub struct BunAreaSensor;
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
@@ -62,18 +71,28 @@ fn spawn_bun(
     bun_mesh: Res<BunMesh>,
     bun_material: Res<BunMaterial>,
 ) {
-    commands.spawn((
-        Bun,
-        NoAutoCenterOfMass,
-        StateScoped(Screen::Gameplay),
-        Transform::from_translation(config.pos.extend(0.0)),
-        Collider::rectangle(BUN_WIDTH, BUN_HEIGHT),
-        bun_mesh.0.clone().expect("Bun mesh not initialized"),
-        bun_material
-            .0
-            .clone()
-            .expect("Bun material not initialized"),
-    ));
+    commands
+        .spawn((
+            Bun,
+            NoAutoCenterOfMass,
+            StateScoped(Screen::Gameplay),
+            Transform::from_translation(config.pos.extend(0.0)),
+            Collider::rectangle(BUN_WIDTH, BUN_HEIGHT),
+            bun_mesh.0.clone().expect("Bun mesh not initialized"),
+            bun_material
+                .0
+                .clone()
+                .expect("Bun material not initialized"),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                BunAreaSensor,
+                Transform::from_translation(Vec3::Y * 500.0),
+                InheritedVisibility::default(),
+                Sensor,
+                Collider::rectangle(BUN_WIDTH, 1000.0),
+            ));
+        });
 }
 
 fn init_mesh(mut bun_mesh: ResMut<BunMesh>, mut meshes: ResMut<Assets<Mesh>>) {

@@ -1,12 +1,33 @@
 use crate::game::pan_controller::PanController;
+use crate::game::patty::Patty;
 use crate::screens::Screen;
+use crate::AppSet;
 use avian2d::prelude::*;
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
 use std::f32::consts::{FRAC_PI_3, FRAC_PI_4, FRAC_PI_8};
-use crate::AppSet;
+
+#[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
+#[require(Name(|| "PanAreaSensor"))]
+#[require(Transform)]
+#[require(Visibility)]
+pub struct PanAreaSensor;
+
+#[auto_register_type]
+#[auto_init_resource]
+#[derive(Resource, Debug, Default, Clone, Reflect)]
+#[reflect(Resource)]
+pub struct HasPattyInArea(bool);
+
+impl HasPattyInArea {
+    pub fn in_area(&self) -> bool {
+        self.0
+    }
+}
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
@@ -50,6 +71,31 @@ pub(crate) fn plugin(app: &mut App) {
         FixedUpdate,
         (handle_mouse_input).chain().in_set(AppSet::RecordInput),
     );
+    app.add_systems(
+        FixedUpdate,
+        (patties_in_area).chain().in_set(AppSet::Update),
+    );
+}
+
+fn patties_in_area(
+    mut collision_event_reader: EventReader<Collision>,
+    mut has_patty_in_area: ResMut<HasPattyInArea>,
+    sensor: Single<Entity, With<PanAreaSensor>>,
+    patties: Query<&RigidBody, With<Patty>>,
+) {
+    if patties.iter().all(RigidBody::is_static) {
+        return;
+    }
+    let mut new_has_patty_in_area = false;
+    for Collision(contacts) in collision_event_reader.read() {
+        if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
+            || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+        {
+            new_has_patty_in_area = true;
+        }
+    }
+
+    has_patty_in_area.0 = new_has_patty_in_area;
 }
 
 pub const PAN_MIN_RADIANS: f32 = -FRAC_PI_8;
@@ -92,6 +138,13 @@ fn spawn_pan(In(config): In<SpawnPan>, mut commands: Commands) {
             rotation_speed: config.rotation_speed,
             ..default()
         },
+    ));
+    commands.spawn((
+        PanAreaSensor,
+        Sensor,
+        Transform::from_translation(config.pos.extend(0.0) + Vec3::X * 130.0),
+        StateScoped(Screen::Gameplay),
+        Collider::rectangle(300.0, 400.0),
     ));
 }
 

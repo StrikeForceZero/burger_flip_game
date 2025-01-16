@@ -1,3 +1,5 @@
+use crate::game::bun::BunAreaSensor;
+use crate::game::pan::HasPattyInArea;
 use crate::screens::Screen;
 use crate::AppSet;
 use avian2d::prelude::*;
@@ -290,7 +292,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(PreStartup, (init_mesh, init_material).chain());
     app.add_systems(
         FixedUpdate,
-        (despawn_patty, patty_respawner)
+        (despawn_patty, check_patty_bun, patty_respawner)
             .chain()
             .in_set(AppSet::Update),
     );
@@ -299,6 +301,48 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (select_segment, manipulate_single_segment, update_offsets).chain(),
     );
+}
+
+fn check_patty_bun(
+    mut commands: Commands,
+    mut collision_event_reader: EventReader<Collision>,
+    sensor: Single<Entity, With<BunAreaSensor>>,
+    patties: Query<(Entity, &RigidBody, &LinearVelocity), With<Patty>>,
+    children: Query<&Children>,
+    rigid_bodies: Query<(Entity, &LinearVelocity), With<RigidBody>>,
+) {
+    if patties.iter().map(|(_, r, ..)| r).all(RigidBody::is_static) {
+        return;
+    }
+    for Collision(contacts) in collision_event_reader.read() {
+        if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
+            || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+        {
+            let Some((entity, rigid_body, linear_velocity)) = patties
+                .get(contacts.entity1)
+                .ok()
+                .or_else(|| patties.get(contacts.entity2).ok())
+            else {
+                panic!("Patty not found")
+            };
+            if linear_velocity.length() < 3.0 && rigid_body.is_dynamic() {
+                let mut to_freeze = vec![entity];
+                for (entity, linear_velocity) in children
+                    .iter_descendants(entity)
+                    .filter_map(|child| rigid_bodies.get(child).ok())
+                {
+                    if linear_velocity.length() >= 3.0 {
+                        to_freeze.clear();
+                        break;
+                    }
+                    to_freeze.push(entity);
+                }
+                for entity in to_freeze {
+                    commands.entity(entity).insert(RigidBody::Static);
+                }
+            }
+        }
+    }
 }
 
 fn update_offsets(
@@ -515,23 +559,34 @@ fn patty_respawner(
     mut removed_patties: RemovedComponents<Patty>,
     screen: Res<State<Screen>>,
     mut commands: Commands,
-    patties: Query<(), With<Patty>>,
+    has_patty_in_area: Res<HasPattyInArea>,
+    patties: Query<&RigidBody, With<Patty>>,
 ) {
-    let mut should_spawn = false;
-    for removed_patty in removed_patties.read() {
-        log::debug!("Patty removed {removed_patty}");
-        if screen.get() != &Screen::Gameplay {
-            log::debug!("Not in Gameplay screen");
-            return;
-        }
-        if !patties.is_empty() {
-            log::debug!("Patties still exist");
-            return;
-        }
-        should_spawn = true;
+    if screen.get() != &Screen::Gameplay {
+        log::debug!("Not in Gameplay screen");
+        return;
     }
 
-    if !should_spawn {
+    let mut should_spawn = None;
+    for removed_patty in removed_patties.read() {
+        log::debug!("Patty removed {removed_patty}");
+        should_spawn = Some(true);
+    }
+
+    for &rigid_body in patties.iter() {
+        if rigid_body != RigidBody::Static {
+            log::debug!("At least one active patty remains");
+            should_spawn = Some(false);
+            break;
+        }
+        if has_patty_in_area.in_area() {
+            log::debug!("Patty still in pan area");
+            should_spawn = Some(false);
+            break;
+        }
+    }
+
+    if should_spawn == Some(false) {
         return;
     }
 
