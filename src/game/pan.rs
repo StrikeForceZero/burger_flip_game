@@ -109,10 +109,15 @@ pub const PAN_HEIGHT_SCALE: f32 = 20.0;
 
 fn handle_mouse_input(
     input: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
     mut controller_query: Query<&mut PanController, With<Pan>>,
 ) {
     for mut controller in &mut controller_query.iter_mut() {
-        controller.intent = if input.pressed(MouseButton::Left) {
+        controller.intent = if input.pressed(MouseButton::Left)
+            || touches
+                .iter()
+                .any(|touch| touches.get_pressed(touch.id()).is_some())
+        {
             Some(controller.rotation_speed)
         } else {
             None
