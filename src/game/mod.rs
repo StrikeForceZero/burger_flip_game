@@ -121,11 +121,7 @@ fn init_back_button(mut commands: Commands) {
 }
 
 fn score_text(score: &Score, best_score: &BestScore) -> String {
-    format!(
-        "score: {}, best: {}",
-        score.0,
-        best_score.0
-    )
+    format!("score: {}, best: {}", score.0, best_score.0)
 }
 
 fn reset_score(mut score: ResMut<Score>) {
