@@ -176,18 +176,18 @@ pub struct MeshSegmentIx(usize);
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
 pub struct OwnedVertices {
-    bottom_left: usize,
-    top_left: usize,
-    bottom_right: usize,
     top_right: usize,
+    top_left: usize,
+    bottom_left: usize,
+    bottom_right: usize,
 }
 
 impl OwnedVertices {
     const PATTY_SEGMENT: Self = Self {
-        bottom_left: 0,
+        top_right: 0,
         top_left: 1,
-        bottom_right: 2,
-        top_right: 3,
+        bottom_left: 2,
+        bottom_right: 3,
     };
 }
 
@@ -195,10 +195,10 @@ impl OwnedVertices {
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
-pub struct PattyMesh(Option<Mesh2d>);
+pub struct PattyMesh(Option<Mesh>);
 
 impl PattyMesh {
-    pub fn clone_handle(&self) -> Option<Mesh2d> {
+    pub fn clone_mesh(&self) -> Option<Mesh> {
         self.0.clone()
     }
 }
@@ -215,15 +215,20 @@ impl PattyMaterial {
     }
 }
 
-#[derive(SystemParam, Debug)]
+#[derive(SystemParam)]
 struct PattyMeshMaterialSystemParam<'w> {
+    meshes: ResMut<'w, Assets<Mesh>>,
     mesh: Res<'w, PattyMesh>,
     material: Res<'w, PattyMaterial>,
 }
 
 impl PattyMeshMaterialSystemParam<'_> {
-    pub fn mesh(&self) -> Mesh2d {
+    pub fn mesh(&self) -> Mesh {
         self.mesh.0.clone().expect("Patty mesh not initialized")
+    }
+    pub fn mesh_2d(&mut self) -> Mesh2d {
+        let mesh = self.mesh();
+        Mesh2d(self.meshes.add(mesh))
     }
     pub fn material(&self) -> MeshMaterial2d<CustomMaterial> {
         self.material
@@ -302,16 +307,43 @@ pub(crate) fn plugin(app: &mut App) {
 
 fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
+    root: Query<&Transform, With<MeshSegmentRoot>>,
+    parents: Query<&Parent>,
     mesh_segment_q: Query<(&Mesh2d, &GlobalTransform), With<MeshSegment>>,
-    joints_q: Query<(&Mesh2d, &MeshJoint, &OwnedVertices, &GlobalTransform)>,
+    joints_q: Query<
+        (
+            Entity,
+            &Mesh2d,
+            &MeshJoint,
+            &OwnedVertices,
+            &Transform,
+            &GlobalTransform,
+        ),
+        (With<MeshJoint>, Without<MeshSegment>),
+    >,
 ) {
-    for (Mesh2d(mesh_handle), mesh_joint, owned_vertices, global_transform) in joints_q.iter() {
+    for (entity, Mesh2d(mesh_handle), mesh_joint, owned_vertices, transform, global_transform) in
+        joints_q.iter()
+    {
+        let Some(&root_transform) = parents
+            .iter_ancestors(entity)
+            .find_map(|parent| root.get(parent).ok())
+            .clone()
+        else {
+            panic!("Failed to resolve root not found");
+        };
         let Ok((_, left_global_transform)) = mesh_segment_q.get(mesh_joint.left) else {
             panic!("Left mesh segment not found");
         };
-        let Ok((_, right_global_transform)) = mesh_segment_q.get(mesh_joint.left) else {
-            panic!("Left mesh segment not found");
+        let Ok((_, right_global_transform)) = mesh_segment_q.get(mesh_joint.right) else {
+            panic!("Right mesh segment not found");
         };
+        println!(
+            "left: {}, center: {}, right: {}",
+            left_global_transform.translation(),
+            global_transform.translation(),
+            right_global_transform.translation()
+        );
         let left_local_transform = left_global_transform.reparented_to(global_transform);
         let right_local_transform = right_global_transform.reparented_to(global_transform);
         const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
@@ -321,17 +353,17 @@ fn update_offsets(
         const TOP_RIGHT: Vec3 = Vec3::new(HALF_WIDTH, HALF_HEIGHT, 0.0);
         const BOTTOM_RIGHT: Vec3 = Vec3::new(HALF_WIDTH, -HALF_HEIGHT, 0.0);
 
-        let top_left = right_local_transform.transform_point(TOP_LEFT);
-        let top_left = top_left.truncate();
+        let top_left = right_local_transform.transform_point(TOP_LEFT).truncate();
 
-        let bottom_left = right_local_transform.transform_point(TOP_RIGHT);
-        let bottom_left = bottom_left.truncate();
+        let bottom_left = right_local_transform
+            .transform_point(BOTTOM_LEFT)
+            .truncate();
 
-        let top_right = left_local_transform.transform_point(TOP_RIGHT);
-        let top_right = top_right.truncate();
+        let top_right = left_local_transform.transform_point(TOP_RIGHT).truncate();
 
-        let bottom_right = left_local_transform.transform_point(BOTTOM_RIGHT);
-        let bottom_right = bottom_right.truncate();
+        let bottom_right = left_local_transform
+            .transform_point(BOTTOM_RIGHT)
+            .truncate();
 
         let Some(mesh) = meshes.get_mut(mesh_handle) else {
             panic!("MeshJoint mesh not found");
@@ -408,16 +440,17 @@ impl Command for SpawnPatty {
     }
 }
 
-const PATTY_PARTS: usize = 5;
-const PATTY_WIDTH: f32 = 100.0;
-const PATTY_PART_WIDTH: f32 = PATTY_WIDTH / PATTY_PARTS as f32;
+const PATTY_PARTS: usize = 3;
+const PATTY_PART_WIDTH: f32 = 20.0;
 const PATTY_HEIGHT: f32 = 20.0;
 const PATTY_JOINT_WIDTH: f32 = PATTY_HEIGHT / 5.0;
+const PATTY_WIDTH: f32 =
+    PATTY_PART_WIDTH * PATTY_PARTS as f32 + PATTY_JOINT_WIDTH * (PATTY_PARTS - 1) as f32;
 
 fn spawn_patty(
     In(config): In<SpawnPatty>,
     mut commands: Commands,
-    pmmmsp: PattyMeshMaterialSystemParam,
+    mut pmmmsp: PattyMeshMaterialSystemParam,
 ) {
     let mut patty_structure = create_segment_and_joint_entities(
         MeshOptions {
@@ -440,7 +473,7 @@ fn spawn_patty(
             RigidBody::Dynamic,
             NoAutoCenterOfMass,
             Collider::rectangle(PATTY_PART_WIDTH, PATTY_HEIGHT),
-            pmmmsp.mesh(),
+            pmmmsp.mesh_2d(),
             pmmmsp.material(),
         ));
     }
@@ -453,8 +486,8 @@ fn spawn_patty(
             RigidBody::Dynamic,
             NoAutoCenterOfMass,
             Collider::circle(PATTY_JOINT_WIDTH / 2.0),
-            // pmmmsp.mesh(),
-            // pmmmsp.material(),
+            pmmmsp.mesh_2d(),
+            pmmmsp.material(),
         ));
         for (left, right) in [(left, entity), (entity, right)] {
             let physics_joint = commands
@@ -531,18 +564,11 @@ fn patty_respawner(
     });
 }
 
-fn init_mesh(mut pan_mesh: ResMut<PattyMesh>, mut meshes: ResMut<Assets<Mesh>>) {
+fn init_mesh(mut pan_mesh: ResMut<PattyMesh>) {
     if pan_mesh.0.is_some() {
         return;
     }
-    let handle = meshes.add(create_horizontal_segmented_rectangle_with_joints(
-        MeshOptions {
-            segments: 1,
-            width: PATTY_PART_WIDTH,
-            height: PATTY_HEIGHT,
-        },
-    ));
-    pan_mesh.0 = Some(Mesh2d(handle));
+    pan_mesh.0 = Some(create_patty_part_mesh(PATTY_PART_WIDTH, PATTY_HEIGHT));
 }
 
 fn init_material(
@@ -594,70 +620,18 @@ impl MeshOptions {
     }
 }
 
-fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) -> Mesh {
-    let segment_width = mesh_options.segment_width();
-    let MeshOptions {
-        segments,
-        width,
-        height,
-    } = mesh_options;
-
-    // Vertex positions for the mesh
-    let mut positions = Vec::new();
-    // UV coordinates
-    let mut uvs = Vec::new();
-    // Normals
-    let mut normals = Vec::new();
-    // Indices for triangles
-    let mut indices = Vec::new();
-
-    for i in 0..=segments {
-        let x = i as f32 * segment_width - width / 2.0; // Center the rectangle on the X-axis
-        let v = i as f32 / segments as f32; // Map texture width from 0.0 to 1.0
-
-        // Add two vertices for the segment: top and bottom
-        positions.push([x, -height / 2.0, 0.0]); // Bottom vertex
-        positions.push([x, height / 2.0, 0.0]); // Top vertex
-
-        // UV coordinates (full texture mapping)
-        uvs.push([v, 1.0]); // Right edge of the texture
-        uvs.push([v, 0.0]); // Left edge of the texture
-
-        // Normals point forward in the Z direction
-        normals.push([0.0, 0.0, 1.0]);
-        normals.push([0.0, 0.0, 1.0]);
-
-        // Add triangles if we're not at the far right
-        if i > 0 {
-            let base_index = (i - 1) * 2;
-            indices.extend_from_slice(&[
-                base_index as u16,
-                (base_index + 1) as u16,
-                (base_index + 3) as u16,
-                base_index as u16,
-                (base_index + 3) as u16,
-                (base_index + 2) as u16,
-            ]);
-        }
-    }
-
-    // Create the mesh
-    Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
-    )
-    .with_inserted_attribute(
-        ATTRIBUTE_BLEND_COLOR,
-        VertexAttributeValues::Float32x4(vec![[0.0, 0.0, 0.0, 1.0]; positions.len()]),
-    )
-    .with_inserted_attribute(
-        ATTRIBUTE_INSTANCE_OFFSET,
-        VertexAttributeValues::Float32x2(vec![[0.0, 0.0]; positions.len()]),
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_indices(Indices::U16(indices))
+fn create_patty_part_mesh(width: f32, height: f32) -> Mesh {
+    Rectangle::new(width, height)
+        .mesh()
+        .build()
+        .with_inserted_attribute(
+            ATTRIBUTE_BLEND_COLOR,
+            VertexAttributeValues::Float32x4(vec![[0.0, 0.0, 0.0, 1.0]; 4]),
+        )
+        .with_inserted_attribute(
+            ATTRIBUTE_INSTANCE_OFFSET,
+            VertexAttributeValues::Float32x2(vec![[0.0, 0.0]; 4]),
+        )
 }
 
 fn create_segment_and_joint_entities(
