@@ -34,6 +34,12 @@ pub struct PattyLanded;
 #[reflect(Resource)]
 pub struct Score(pub u32);
 
+#[auto_register_type]
+#[auto_init_resource]
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Resource)]
+pub struct BestScore(pub u32);
+
 fn on_patty_out_of_bounds(
     mut commands: Commands,
     mut collision_event_reader: EventReader<Collision>,
@@ -77,9 +83,14 @@ fn on_game_over(
     }
 }
 
-fn on_landed(mut events: EventReader<PattyLanded>, mut score: ResMut<Score>) {
+fn on_landed(
+    mut events: EventReader<PattyLanded>,
+    mut score: ResMut<Score>,
+    mut best_score: ResMut<BestScore>,
+) {
     for _ in events.read() {
         score.0 += 1;
+        best_score.0 = best_score.0.max(score.0);
         log::info!("Score {}", score.0);
     }
 }
@@ -109,12 +120,24 @@ fn init_back_button(mut commands: Commands) {
         });
 }
 
+fn score_text(score: &Score, best_score: &BestScore) -> String {
+    format!(
+        "score: {}, best: {}",
+        score.0.to_string(),
+        best_score.0.to_string()
+    )
+}
+
+fn reset_score(mut score: ResMut<Score>) {
+    score.0 = 0;
+}
+
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
 #[require(Name(|| "ScoreLabel"))]
 pub struct ScoreLabel;
-fn init_score_label(mut commands: Commands, score: Res<Score>) {
+fn init_score_label(mut commands: Commands, score: Res<Score>, best_score: Res<BestScore>) {
     commands
         .spawn((
             StateScoped(Screen::Gameplay),
@@ -127,7 +150,7 @@ fn init_score_label(mut commands: Commands, score: Res<Score>) {
         .with_children(|children| {
             children.spawn((
                 ScoreLabel,
-                Text(score.0.to_string()),
+                Text(score_text(&score, &best_score)),
                 TextFont {
                     font_size: 40.0,
                     ..default()
@@ -139,9 +162,12 @@ fn init_score_label(mut commands: Commands, score: Res<Score>) {
 fn update_score_label(
     mut commands: Commands,
     score: Res<Score>,
+    best_score: Res<BestScore>,
     label: Single<Entity, With<ScoreLabel>>,
 ) {
-    commands.entity(*label).insert(Text(score.0.to_string()));
+    commands
+        .entity(*label)
+        .insert(Text(score_text(&score, &best_score)));
 }
 
 #[auto_plugin(app=app)]
@@ -164,6 +190,6 @@ pub(crate) fn plugin(app: &mut App) {
     );
     app.add_systems(
         OnEnter(Screen::Gameplay),
-        (init_back_button, init_score_label).chain(),
+        (reset_score, init_back_button, init_score_label).chain(),
     );
 }
