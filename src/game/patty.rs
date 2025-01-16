@@ -1,5 +1,6 @@
 use crate::game::bun::BunAreaSensor;
 use crate::game::pan::HasPattyInArea;
+use crate::game::{PattyLanded, PattyOutOfBounds};
 use crate::screens::Screen;
 use crate::AppSet;
 use avian2d::prelude::*;
@@ -315,6 +316,7 @@ fn check_patty_bun(
     if patties.iter().map(|(_, r, ..)| r).all(RigidBody::is_static) {
         return;
     }
+    let mut scored = false;
     for Collision(contacts) in collision_event_reader.read() {
         if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
             || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
@@ -338,11 +340,18 @@ fn check_patty_bun(
                     }
                     to_freeze.push(entity);
                 }
+                if !to_freeze.is_empty() {
+                    scored = true;
+                }
                 for entity in to_freeze {
                     commands.entity(entity).insert(RigidBody::Static);
                 }
             }
         }
+    }
+    // TODO: doesn't handle multiple patties
+    if scored {
+        commands.send_event(PattyLanded);
     }
 }
 
@@ -632,6 +641,7 @@ fn despawn_patty(
     }
     for entity in entities_to_despawn {
         commands.entity(entity).try_despawn_recursive();
+        commands.send_event(PattyOutOfBounds);
     }
 }
 
