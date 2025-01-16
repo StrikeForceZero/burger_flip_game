@@ -1,6 +1,7 @@
 use crate::game::bun::SpawnBun;
 use crate::game::patty::SpawnPatty;
 use crate::screens::Screen;
+use crate::theme::prelude::*;
 use avian2d::prelude::Collision;
 use bevy::prelude::*;
 use internal_bevy_auto_plugin_macros::{
@@ -86,6 +87,31 @@ fn on_landed(mut events: EventReader<PattyLanded>, mut score: ResMut<Score>) {
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
+#[require(Name(|| "BackButton"))]
+pub struct BackButton;
+fn init_back_button(mut commands: Commands) {
+    commands
+        .spawn((
+            StateScoped(Screen::Gameplay),
+            Node {
+                width: Val::Percent(100.0),
+                margin: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+        ))
+        .with_children(|children| {
+            children.button("Menu").observe(
+                |_trigger: Trigger<OnPress>, mut next_state: ResMut<NextState<Screen>>| {
+                    log::debug!("Back to Menu Pressed");
+                    next_state.set(Screen::Title);
+                },
+            );
+        });
+}
+
+#[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
 #[require(Name(|| "ScoreLabel"))]
 pub struct ScoreLabel;
 fn init_score_label(mut commands: Commands, score: Res<Score>) {
@@ -136,5 +162,8 @@ pub(crate) fn plugin(app: &mut App) {
             .chain()
             .run_if(Screen::run_if_is_gameplay),
     );
-    app.add_systems(OnEnter(Screen::Gameplay), init_score_label);
+    app.add_systems(
+        OnEnter(Screen::Gameplay),
+        (init_back_button, init_score_label).chain(),
+    );
 }
