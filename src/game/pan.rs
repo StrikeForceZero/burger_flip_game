@@ -73,7 +73,10 @@ pub(crate) fn plugin(app: &mut App) {
     );
     app.add_systems(
         FixedUpdate,
-        (patties_in_area).chain().in_set(AppSet::Update),
+        (patties_in_area)
+            .chain()
+            .in_set(AppSet::Update)
+            .run_if(Screen::run_if_is_gameplay),
     );
 }
 

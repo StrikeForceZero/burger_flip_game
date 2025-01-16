@@ -294,7 +294,8 @@ pub(crate) fn plugin(app: &mut App) {
         FixedUpdate,
         (despawn_patty, check_patty_bun, patty_respawner)
             .chain()
-            .in_set(AppSet::Update),
+            .in_set(AppSet::Update)
+            .run_if(Screen::run_if_is_gameplay),
     );
     app.add_observer(on_patty_remove);
     app.add_systems(

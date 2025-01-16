@@ -31,3 +31,9 @@ pub enum Screen {
     Credits,
     Gameplay,
 }
+
+impl Screen {
+    pub fn run_if_is_gameplay(state: Res<State<Screen>>) -> bool {
+        matches!(state.get(), Self::Gameplay)
+    }
+}
