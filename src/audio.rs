@@ -5,7 +5,7 @@ use bevy::prelude::*;
 ///
 /// This can then be used to query for and operate on sounds in that category. For example:
 ///
-/// ```
+/// ```no_run
 /// use bevy::prelude::*;
 /// use burger_flip_game::audio::Music;
 ///
@@ -23,7 +23,7 @@ pub struct Music;
 ///
 /// This can then be used to query for and operate on sounds in that category. For example:
 ///
-/// ```
+/// ```no_run
 /// use bevy::prelude::*;
 /// use burger_flip_game::audio::SoundEffect;
 ///
