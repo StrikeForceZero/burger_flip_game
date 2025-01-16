@@ -19,7 +19,7 @@ smart-default = "0.7"
 [dependencies]
 internal_bevy_auto_plugin_macros = { workspace = true }
 bevy = { workspace = true }
-bevy-inspector-egui = { version = "0.28.1" }
+bevy-inspector-egui = { version = "0.28.1", optional = true }
 avian2d = { git = "https://github.com/Jondolf/avian.git", rev = "6a65e8f491c1320ba94dd36c344df7c40bb6705d", features = ["enhanced-determinism"] }
 rand = "0.8"
 smart-default = { workspace = true }
@@ -45,6 +45,7 @@ dev = [
     # Improve compile times for dev builds by linking Bevy as a dynamic library.
     "bevy/dynamic_linking",
     "bevy/bevy_dev_tools",
+    "inspector",
 ]
 dev_native = [
     "dev",
@@ -53,6 +54,7 @@ dev_native = [
     # Enable embedded asset hot reloading for native dev builds.
     "bevy/embedded_watcher",
 ]
+inspector = ["bevy-inspector-egui"]
 wireframe = []
 skip_menu = []
 show_colliders = []

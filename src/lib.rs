@@ -23,7 +23,6 @@ use bevy::{
     render::RenderPlugin,
     sprite::{Wireframe2dConfig, Wireframe2dPlugin},
 };
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 pub struct AppPlugin;
 
@@ -95,7 +94,7 @@ impl Plugin for AppPlugin {
             });
 
         // Add 3rd party plugins
-        app.add_plugins((WorldInspectorPlugin::default(), PhysicsPlugins::default()));
+        app.add_plugins(PhysicsPlugins::default());
 
         app.insert_resource(Gravity(Vec2::NEG_Y * 980.0));
 
