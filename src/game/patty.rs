@@ -558,15 +558,10 @@ fn on_patty_remove(
 
 fn patty_respawner(
     mut removed_patties: RemovedComponents<Patty>,
-    screen: Res<State<Screen>>,
     mut commands: Commands,
     has_patty_in_area: Res<HasPattyInArea>,
     patties: Query<(Entity, &RigidBody), With<Patty>>,
 ) {
-    if screen.get() != &Screen::Gameplay {
-        return;
-    }
-
     let mut should_spawn = None;
     for removed_patty in removed_patties.read() {
         log::trace!("Patty removed {removed_patty}");
