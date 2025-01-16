@@ -1,5 +1,5 @@
 use crate::game::bun::BunAreaSensor;
-use crate::game::pan::HasPattyInArea;
+use crate::game::pan::{HasPattyInArea, Pan, PanAreaSensor};
 use crate::game::{PattyLanded, PattyOutOfBounds};
 use crate::screens::Screen;
 use crate::AppSet;
@@ -34,7 +34,13 @@ use smart_default::SmartDefault;
 #[require(Name(|| "Patty"))]
 #[require(Transform)]
 #[require(Visibility)]
+#[require(PattyCookedAmount)]
 pub struct Patty;
+
+#[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Reflect)]
+#[reflect(Component)]
+pub struct PattyCookedAmount(f32);
 
 #[auto_register_type]
 #[derive(Component, Debug, Clone, PartialEq, Eq, Reflect)]
@@ -309,6 +315,13 @@ pub(crate) fn plugin(app: &mut App) {
             .chain()
             .before(update_offsets),
     );
+    app.add_systems(
+        FixedUpdate,
+        (cook_patty, update_cooked)
+            .chain()
+            .in_set(AppSet::Update)
+            .run_if(Screen::run_if_is_gameplay),
+    );
 }
 
 fn check_patty_bun(
@@ -358,6 +371,67 @@ fn check_patty_bun(
     // TODO: doesn't handle multiple patties
     if scored {
         commands.send_event(PattyLanded);
+    }
+}
+
+fn cook_patty(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut collision_event_reader: EventReader<Collision>,
+    pan: Single<Entity, With<Pan>>,
+    patties: Query<(Entity, &PattyCookedAmount), With<Patty>>,
+) {
+    let mut cooking_patties = EntityHashSet::default();
+    for Collision(contacts) in collision_event_reader.read() {
+        if (*pan == contacts.entity1 && patties.contains(contacts.entity2)
+            || (*pan == contacts.entity2 && patties.contains(contacts.entity1)))
+        {
+            let Some((entity, ..)) = patties
+                .get(contacts.entity1)
+                .ok()
+                .or_else(|| patties.get(contacts.entity2).ok())
+            else {
+                panic!("Patty not found")
+            };
+            cooking_patties.insert(entity);
+        }
+    }
+    for cooked_patty in cooking_patties {
+        let (_, cooked_amount) = patties.get(cooked_patty).unwrap();
+        commands
+            .entity(cooked_patty)
+            .insert(PattyCookedAmount(cooked_amount.0 + time.delta_secs()));
+    }
+}
+
+fn update_cooked(
+    mut meshes: ResMut<Assets<Mesh>>,
+    updated_patties: Query<(Entity, &PattyCookedAmount), (With<Patty>, Changed<PattyCookedAmount>)>,
+    children: Query<&Children>,
+    mesh_q: Query<&Mesh2d>,
+) {
+    for (entity, cooked_amount) in updated_patties.iter() {
+        for child in children
+            .iter_descendants(entity)
+            .chain(std::iter::once(entity))
+        {
+            let Ok(Mesh2d(handle)) = mesh_q.get(child) else {
+                continue;
+            };
+            let mesh = meshes.get_mut(handle).expect("Mesh not found");
+            let Some(attr_value) = mesh.attribute_mut(ATTRIBUTE_BLEND_COLOR) else {
+                panic!("Mesh does not have Blend_Color attribute.");
+            };
+            let VertexAttributeValues::Float32x4(ref mut blend_color) = attr_value else {
+                panic!("Mesh attribute Blend_Color is not of type Float32x4.");
+            };
+            for blend_color_instance in blend_color.iter_mut() {
+                let color = Color::from(LinearRgba::from_f32_array(*blend_color_instance));
+                let cooked_amount = (cooked_amount.0 / 10.0).clamp(0.0, 1.0);
+                let color = color.with_luminance(1.0 - cooked_amount);
+                *blend_color_instance = color.to_linear().to_f32_array();
+            }
+        }
     }
 }
 
