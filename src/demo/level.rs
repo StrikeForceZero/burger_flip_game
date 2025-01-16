@@ -1,9 +1,10 @@
 //! Spawn the main level.
 
-use std::f32::consts::FRAC_PI_2;
 use bevy::{ecs::world::Command, prelude::*};
+use std::f32::consts::FRAC_PI_2;
 
 use crate::demo::player::SpawnPlayer;
+use crate::game::bun::SpawnBun;
 use crate::game::pan::SpawnPan;
 use crate::game::patty::SpawnPatty;
 
@@ -25,6 +26,10 @@ pub fn spawn_level(world: &mut World) {
     SpawnPatty {
         pos: Vec2::Y * 100.0 + Vec2::X * -20.0,
         scale: Vec2::splat(1.5),
+    }
+    .apply(world);
+    SpawnBun {
+        pos: Vec2::X * 300.0,
     }
     .apply(world);
 }
