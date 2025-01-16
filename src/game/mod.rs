@@ -1,3 +1,4 @@
+use crate::game::bun::SpawnBun;
 use crate::game::patty::SpawnPatty;
 use crate::screens::Screen;
 use avian2d::prelude::Collision;
@@ -54,6 +55,7 @@ fn on_patty_out_of_bounds(
 fn on_game_over(
     mut commands: Commands,
     mut events: EventReader<GameOver>,
+    bun: Single<Entity, With<bun::Bun>>,
     patties: Query<Entity, With<patty::Patty>>,
     mut score: ResMut<Score>,
 ) {
@@ -63,10 +65,14 @@ fn on_game_over(
         for patty in patties.iter() {
             commands.entity(patty).try_despawn_recursive();
         }
+        commands.entity(*bun).try_despawn_recursive();
+        commands.queue(SpawnBun {
+            pos: Vec2::X * 300.0,
+        });
         commands.queue(SpawnPatty {
             pos: Vec2::Y * 100.0 + Vec2::X * -20.0,
             scale: Vec2::splat(1.5),
-        })
+        });
     }
 }
 

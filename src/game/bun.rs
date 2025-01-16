@@ -1,6 +1,8 @@
-use crate::game::patty::MeshSegmentRoot;
+use crate::game::patty::{MeshSegmentRoot, Patty, PATTY_HEIGHT};
+use crate::game::{PattyLanded, Score};
 use crate::screens::Screen;
 use avian2d::prelude::*;
+use bevy::ecs::entity::EntityHashSet;
 use bevy::prelude::*;
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
 
@@ -49,6 +51,10 @@ impl BunMaterial {
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(PreStartup, (init_mesh, init_material).chain());
+    app.add_systems(
+        FixedUpdate,
+        move_landing_zone_down.run_if(Screen::run_if_is_gameplay),
+    );
 }
 
 const BUN_WIDTH: f32 = 150.0;
@@ -106,4 +112,48 @@ fn init_material(
     bun_material.0 = Some(MeshMaterial2d(materials.add(ColorMaterial::from_color(
         bevy::color::palettes::css::BURLYWOOD,
     ))));
+}
+
+fn move_landing_zone_down(
+    mut commands: Commands,
+    patties: Query<Entity, With<Patty>>,
+    bun: Single<Entity, With<Bun>>,
+    sensor: Single<Entity, With<BunAreaSensor>>,
+    transforms: Query<&Transform>,
+    mut patties_landed_evr: EventReader<PattyLanded>,
+    mut collision_event_reader: EventReader<Collision>,
+) {
+    for _ in patties_landed_evr.read() {
+        let mut entities_to_move_down = EntityHashSet::default();
+
+        entities_to_move_down.insert(*bun);
+
+        for Collision(contacts) in collision_event_reader.read() {
+            if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
+                || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+            {
+                let patty = patties
+                    .get(contacts.entity1)
+                    .ok()
+                    .or_else(|| patties.get(contacts.entity2).ok())
+                    .expect("Patty not found");
+                entities_to_move_down.insert(patty);
+            }
+        }
+
+        debug_assert!(
+            entities_to_move_down.len() > 1,
+            "expected to move more than just the bun"
+        );
+        let move_down_amount = -Vec3::Y * PATTY_HEIGHT;
+        let mut move_down = |entity: Entity| {
+            let transform = transforms.get(entity).expect("Transform not found");
+            commands
+                .entity(entity)
+                .insert(transform.with_translation(transform.translation + move_down_amount));
+        };
+        for entity in entities_to_move_down {
+            move_down(entity);
+        }
+    }
 }
