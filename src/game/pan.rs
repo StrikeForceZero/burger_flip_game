@@ -101,6 +101,9 @@ fn patties_in_area(
 pub const PAN_MIN_RADIANS: f32 = -FRAC_PI_8;
 pub const PAN_MAX_RADIANS: f32 = 0.0;
 
+pub const PAN_WIDTH_SCALE: f32 = 20.0;
+pub const PAN_HEIGHT_SCALE: f32 = 20.0;
+
 fn handle_mouse_input(
     input: Res<ButtonInput<MouseButton>>,
     mut controller_query: Query<&mut PanController, With<Pan>>,
@@ -127,25 +130,26 @@ impl Command for SpawnPan {
 }
 
 fn spawn_pan(In(config): In<SpawnPan>, mut commands: Commands) {
-    commands.spawn((
-        Pan,
-        NoAutoCenterOfMass,
-        StateScoped(Screen::Gameplay),
-        Transform::from_translation(config.pos.extend(0.0))
-            .with_scale(Vec2::splat(20.0).extend(1.0))
-            .with_rotation(Quat::from_axis_angle(Vec3::Z, PAN_MIN_RADIANS)),
-        PanController {
-            rotation_speed: config.rotation_speed,
-            ..default()
-        },
-    ));
-    commands.spawn((
-        PanAreaSensor,
-        Sensor,
-        Transform::from_translation(config.pos.extend(0.0) + Vec3::X * 130.0),
-        StateScoped(Screen::Gameplay),
-        Collider::rectangle(300.0, 400.0),
-    ));
+    commands
+        .spawn((
+            Pan,
+            NoAutoCenterOfMass,
+            StateScoped(Screen::Gameplay),
+            Transform::from_translation(config.pos.extend(0.0))
+                .with_rotation(Quat::from_axis_angle(Vec3::Z, PAN_MIN_RADIANS)),
+            PanController {
+                rotation_speed: config.rotation_speed,
+                ..default()
+            },
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                PanAreaSensor,
+                Sensor,
+                Collider::rectangle(15.0 * PAN_WIDTH_SCALE, 20.0 * PAN_HEIGHT_SCALE),
+                Transform::from_translation(Vec3::X * 6.5 * PAN_WIDTH_SCALE),
+            ));
+        });
 }
 
 fn on_pan_add(
@@ -191,13 +195,13 @@ fn init_material(
 
 const fn skillet_vertices() -> [[f32; 2]; 7] {
     [
-        [13.0, 0.0],  // v0 (pan top right)
-        [4.0, 0.0],   // v1 (pan top left/start of handle)
-        [0.0, 0.0],   // v2 (handle top left - origin)
-        [0.0, -1.0],  // v3 (handle bottom left)
-        [4.0, -1.0],  // v4 (handle bottom right)
-        [5.0, -3.0],  // v5 (pan bottom left)
-        [12.5, -3.0], // v6 (pan bottom right)
+        [13.0 * PAN_WIDTH_SCALE, 0.0 * PAN_HEIGHT_SCALE], // v0 (pan top right)
+        [4.0 * PAN_WIDTH_SCALE, 0.0 * PAN_HEIGHT_SCALE],  // v1 (pan top left/start of handle)
+        [0.0 * PAN_WIDTH_SCALE, 0.0 * PAN_HEIGHT_SCALE],  // v2 (handle top left - origin)
+        [0.0 * PAN_WIDTH_SCALE, -1.0 * PAN_HEIGHT_SCALE], // v3 (handle bottom left)
+        [4.0 * PAN_WIDTH_SCALE, -1.0 * PAN_HEIGHT_SCALE], // v4 (handle bottom right)
+        [5.0 * PAN_WIDTH_SCALE, -3.0 * PAN_HEIGHT_SCALE], // v5 (pan bottom left)
+        [12.5 * PAN_WIDTH_SCALE, -3.0 * PAN_HEIGHT_SCALE], // v6 (pan bottom right)
     ]
 }
 
