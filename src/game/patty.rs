@@ -686,7 +686,7 @@ fn init_material(
         return;
     }
     let handle = materials.add(CustomMaterial {
-        color: Color::Srgba(bevy::color::palettes::tailwind::AMBER_950).to_linear(),
+        color: Color::Srgba(bevy::color::palettes::tailwind::ROSE_500).to_linear(),
         ..default()
     });
     pan_material.0 = Some(MeshMaterial2d(handle));
