@@ -7,17 +7,21 @@ mod game;
 mod screens;
 mod theme;
 
+#[cfg(feature = "skip_menu")]
 use crate::screens::Screen;
 use avian2d::prelude::Gravity;
 use avian2d::PhysicsPlugins;
-use bevy::color::palettes::basic::WHITE;
-use bevy::render::settings::{RenderCreation, WgpuFeatures, WgpuSettings};
-use bevy::render::RenderPlugin;
-use bevy::sprite::{Wireframe2dConfig, Wireframe2dPlugin};
 use bevy::{
     asset::AssetMetaCheck,
     audio::{AudioPlugin, Volume},
     prelude::*,
+};
+#[cfg(feature = "wireframe")]
+use bevy::{
+    color::palettes::basic::WHITE,
+    render::settings::{RenderCreation, WgpuFeatures, WgpuSettings},
+    render::RenderPlugin,
+    sprite::{Wireframe2dConfig, Wireframe2dPlugin},
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 

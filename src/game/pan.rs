@@ -7,7 +7,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
-use std::f32::consts::{FRAC_PI_3, FRAC_PI_4, FRAC_PI_8};
+use std::f32::consts::FRAC_PI_8;
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
@@ -91,8 +91,8 @@ fn patties_in_area(
     }
     let mut new_has_patty_in_area = false;
     for Collision(contacts) in collision_event_reader.read() {
-        if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
-            || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+        if *sensor == contacts.entity1 && patties.contains(contacts.entity2)
+            || (*sensor == contacts.entity2 && patties.contains(contacts.entity1))
         {
             new_has_patty_in_area = true;
         }

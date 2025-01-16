@@ -1,5 +1,5 @@
-use crate::game::patty::{MeshSegmentRoot, Patty, PATTY_HEIGHT};
-use crate::game::{PattyLanded, Score};
+use crate::game::patty::{Patty, PATTY_HEIGHT};
+use crate::game::PattyLanded;
 use crate::screens::Screen;
 use avian2d::prelude::*;
 use bevy::ecs::entity::EntityHashSet;
@@ -129,8 +129,8 @@ fn move_landing_zone_down(
         entities_to_move_down.insert(*bun);
 
         for Collision(contacts) in collision_event_reader.read() {
-            if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
-                || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+            if *sensor == contacts.entity1 && patties.contains(contacts.entity2)
+                || (*sensor == contacts.entity2 && patties.contains(contacts.entity1))
             {
                 let patty = patties
                     .get(contacts.entity1)

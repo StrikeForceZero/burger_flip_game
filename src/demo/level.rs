@@ -3,7 +3,6 @@
 use bevy::{ecs::world::Command, prelude::*};
 use std::f32::consts::FRAC_PI_2;
 
-use crate::demo::player::SpawnPlayer;
 use crate::game::bun::SpawnBun;
 use crate::game::pan::SpawnPan;
 use crate::game::patty::SpawnPatty;

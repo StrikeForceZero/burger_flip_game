@@ -49,8 +49,8 @@ fn on_patty_out_of_bounds(
 ) {
     for _ in events.read() {
         for Collision(contacts) in collision_event_reader.read() {
-            if (*bun_sensor == contacts.entity1 && patties.contains(contacts.entity2)
-                || (*bun_sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+            if *bun_sensor == contacts.entity1 && patties.contains(contacts.entity2)
+                || (*bun_sensor == contacts.entity2 && patties.contains(contacts.entity1))
             {
                 commands.send_event(GameOver);
                 return;
@@ -123,8 +123,8 @@ fn init_back_button(mut commands: Commands) {
 fn score_text(score: &Score, best_score: &BestScore) -> String {
     format!(
         "score: {}, best: {}",
-        score.0.to_string(),
-        best_score.0.to_string()
+        score.0,
+        best_score.0
     )
 }
 

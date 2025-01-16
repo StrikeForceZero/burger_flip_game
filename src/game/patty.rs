@@ -1,30 +1,22 @@
 use crate::game::bun::BunAreaSensor;
-use crate::game::pan::{HasPattyInArea, Pan, PanAreaSensor};
+use crate::game::pan::{HasPattyInArea, Pan};
 use crate::game::{PattyLanded, PattyOutOfBounds};
 use crate::screens::Screen;
 use crate::AppSet;
 use avian2d::prelude::*;
-use bevy::asset::RenderAssetUsages;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::world::DeferredWorld;
-use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
-use bevy::render::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
-use bevy::render::mesh::{
-    Indices, MeshVertexAttribute, MeshVertexBufferLayoutRef, PrimitiveTopology,
-    VertexAttributeValues,
-};
+use bevy::render::mesh::{MeshVertexAttribute, MeshVertexBufferLayoutRef, VertexAttributeValues};
 use bevy::render::render_resource::{
     AsBindGroup, RenderPipelineDescriptor, ShaderRef, SpecializedMeshPipelineError, VertexFormat,
 };
 use bevy::sprite::{Material2d, Material2dKey, Material2dPlugin};
 use bevy::utils::HashMap;
 use bevy::window::PrimaryWindow;
-use internal_bevy_auto_plugin_macros::{
-    auto_add_event, auto_init_resource, auto_plugin, auto_register_type,
-};
+use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
 use itertools::Itertools;
 use smart_default::SmartDefault;
 
@@ -56,7 +48,7 @@ pub struct PattyStructure {
 impl PattyStructure {
     fn new(root: Entity) -> Self {
         Self {
-            root: root,
+            root,
             physic_joints: Default::default(),
             mesh_joints: Default::default(),
             mesh_segments: Default::default(),
@@ -337,8 +329,8 @@ fn check_patty_bun(
     }
     let mut scored = false;
     for Collision(contacts) in collision_event_reader.read() {
-        if (*sensor == contacts.entity1 && patties.contains(contacts.entity2)
-            || (*sensor == contacts.entity2 && patties.contains(contacts.entity1)))
+        if *sensor == contacts.entity1 && patties.contains(contacts.entity2)
+            || (*sensor == contacts.entity2 && patties.contains(contacts.entity1))
         {
             let Some((entity, rigid_body, linear_velocity)) = patties
                 .get(contacts.entity1)
@@ -383,8 +375,8 @@ fn cook_patty(
 ) {
     let mut cooking_patties = EntityHashSet::default();
     for Collision(contacts) in collision_event_reader.read() {
-        if (*pan == contacts.entity1 && patties.contains(contacts.entity2)
-            || (*pan == contacts.entity2 && patties.contains(contacts.entity1)))
+        if *pan == contacts.entity1 && patties.contains(contacts.entity2)
+            || (*pan == contacts.entity2 && patties.contains(contacts.entity1))
         {
             let Some((entity, ..)) = patties
                 .get(contacts.entity1)
@@ -437,8 +429,6 @@ fn update_cooked(
 
 fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
-    root: Query<&Transform, With<MeshSegmentRoot>>,
-    parents: Query<&Parent>,
     mesh_segment_q: Query<(&Mesh2d, &GlobalTransform), With<MeshSegment>>,
     joints_q: Query<
         (
@@ -451,7 +441,7 @@ fn update_offsets(
         (With<MeshJoint>, Without<MeshSegment>),
     >,
 ) {
-    for (entity, Mesh2d(mesh_handle), mesh_joint, owned_vertices, global_transform) in
+    for (_entity, Mesh2d(mesh_handle), mesh_joint, owned_vertices, global_transform) in
         joints_q.iter()
     {
         let Ok((_, left_global_transform)) = mesh_segment_q.get(mesh_joint.left) else {
@@ -953,7 +943,7 @@ fn create_segment_and_joint_entities(
     on_seg_created(commands, root, 0);
     // start at 1 to account for root
     // * 2 - 1 because we are inserting joints along with segments
-    for ix in (1..segment_count * 2 - 1) {
+    for ix in 1..segment_count * 2 - 1 {
         let direction = dir_from_ix(ix);
 
         let Some(direction) = direction else {
@@ -1050,7 +1040,7 @@ fn create_segment_and_joint_entities(
         ))
         .collect::<Vec<_>>();
 
-    for (ix, need_transform) in needs_transforms {
+    for (_ix, need_transform) in needs_transforms {
         let (direction, need_transform) = need_transform.tuple();
         let dir = direction.to_sign() as f32 * Vec3::X;
         // +1 since root isn't included

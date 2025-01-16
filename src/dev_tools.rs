@@ -1,5 +1,6 @@
 //! Development tools for the game. This plugin is only enabled in dev builds.
 
+#[cfg(feature = "show_colliders")]
 use avian2d::prelude::PhysicsDebugPlugin;
 use bevy::{
     dev_tools::{
