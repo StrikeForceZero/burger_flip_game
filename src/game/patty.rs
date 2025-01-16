@@ -466,6 +466,7 @@ fn update_offsets(
     }
 }
 
+#[cfg(feature = "dev")]
 fn select_segment(
     mut selected_joint: ResMut<SelectedSegment>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -486,6 +487,7 @@ fn select_segment(
     }
 }
 
+#[cfg(feature = "dev")]
 fn manipulate_single_segment(
     selected_segment: Res<SelectedSegment>,
     mut segment_query: Query<(&mut Transform, &MeshSegmentIx)>,
