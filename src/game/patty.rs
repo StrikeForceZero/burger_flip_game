@@ -301,9 +301,13 @@ pub(crate) fn plugin(app: &mut App) {
             .run_if(Screen::run_if_is_gameplay),
     );
     app.add_observer(on_patty_remove);
+    app.add_systems(Update, (update_offsets).chain());
+    #[cfg(feature = "dev")]
     app.add_systems(
         Update,
-        (select_segment, manipulate_single_segment, update_offsets).chain(),
+        (select_segment, manipulate_single_segment)
+            .chain()
+            .before(update_offsets),
     );
 }
 
