@@ -561,29 +561,28 @@ fn patty_respawner(
     screen: Res<State<Screen>>,
     mut commands: Commands,
     has_patty_in_area: Res<HasPattyInArea>,
-    patties: Query<&RigidBody, With<Patty>>,
+    patties: Query<(Entity, &RigidBody), With<Patty>>,
 ) {
     if screen.get() != &Screen::Gameplay {
-        log::debug!("Not in Gameplay screen");
         return;
     }
 
     let mut should_spawn = None;
     for removed_patty in removed_patties.read() {
-        log::debug!("Patty removed {removed_patty}");
+        log::trace!("Patty removed {removed_patty}");
         should_spawn = Some(true);
     }
 
-    for &rigid_body in patties.iter() {
-        if rigid_body != RigidBody::Static {
-            log::debug!("At least one active patty remains");
-            should_spawn = Some(false);
-            break;
-        }
-        if has_patty_in_area.in_area() {
-            log::debug!("Patty still in pan area");
-            should_spawn = Some(false);
-            break;
+    if has_patty_in_area.in_area() {
+        log::trace!("Patty still in pan area");
+        should_spawn = Some(false);
+    } else {
+        for (entity, &rigid_body) in patties.iter() {
+            if rigid_body != RigidBody::Static {
+                log::trace!("At least one active patty remains {entity}");
+                should_spawn = Some(false);
+                break;
+            }
         }
     }
 
