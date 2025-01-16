@@ -417,9 +417,9 @@ impl Command for SpawnPatty {
     }
 }
 
-const PATTY_PARTS: usize = 3;
-const PATTY_PART_WIDTH: f32 = 20.0;
-const PATTY_HEIGHT: f32 = 20.0;
+const PATTY_PARTS: usize = 5;
+const PATTY_PART_WIDTH: f32 = 15.0;
+const PATTY_HEIGHT: f32 = 15.0;
 const PATTY_JOINT_WIDTH: f32 = PATTY_HEIGHT / 5.0;
 const PATTY_WIDTH: f32 =
     PATTY_PART_WIDTH * PATTY_PARTS as f32 + PATTY_JOINT_WIDTH * (PATTY_PARTS - 1) as f32;
