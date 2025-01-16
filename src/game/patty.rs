@@ -22,7 +22,9 @@ use bevy::render::render_resource::{
 use bevy::sprite::{Material2d, Material2dKey, Material2dPlugin};
 use bevy::utils::HashMap;
 use bevy::window::PrimaryWindow;
-use internal_bevy_auto_plugin_macros::{auto_init_resource, auto_plugin, auto_register_type};
+use internal_bevy_auto_plugin_macros::{
+    auto_add_event, auto_init_resource, auto_plugin, auto_register_type,
+};
 use itertools::Itertools;
 use smart_default::SmartDefault;
 
