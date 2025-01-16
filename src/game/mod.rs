@@ -83,6 +83,41 @@ fn on_landed(mut events: EventReader<PattyLanded>, mut score: ResMut<Score>) {
     }
 }
 
+#[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
+#[require(Name(|| "ScoreLabel"))]
+pub struct ScoreLabel;
+fn init_score_label(mut commands: Commands, score: Res<Score>) {
+    commands
+        .spawn((
+            StateScoped(Screen::Gameplay),
+            Node {
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+        ))
+        .with_children(|children| {
+            children.spawn((
+                ScoreLabel,
+                Text(score.0.to_string()),
+                TextFont {
+                    font_size: 40.0,
+                    ..default()
+                },
+            ));
+        });
+}
+
+fn update_score_label(
+    mut commands: Commands,
+    score: Res<Score>,
+    label: Single<Entity, With<ScoreLabel>>,
+) {
+    commands.entity(*label).insert(Text(score.0.to_string()));
+}
+
 #[auto_plugin(app=app)]
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(pan::plugin);
@@ -92,8 +127,14 @@ pub(crate) fn plugin(app: &mut App) {
 
     app.add_systems(
         FixedUpdate,
-        (on_patty_out_of_bounds, on_landed, on_game_over)
+        (
+            on_patty_out_of_bounds,
+            on_landed,
+            update_score_label,
+            on_game_over,
+        )
             .chain()
             .run_if(Screen::run_if_is_gameplay),
     );
+    app.add_systems(OnEnter(Screen::Gameplay), init_score_label);
 }
