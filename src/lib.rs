@@ -7,6 +7,7 @@ mod screens;
 mod theme;
 mod game;
 
+use crate::screens::Screen;
 use avian2d::PhysicsPlugins;
 use avian2d::prelude::Gravity;
 use bevy::color::palettes::basic::WHITE;
@@ -109,6 +110,12 @@ impl Plugin for AppPlugin {
         // Enable dev tools for dev builds.
         #[cfg(feature = "dev")]
         app.add_plugins(dev_tools::plugin);
+
+        #[cfg(feature = "skip_menu")]
+        // Immediately jump to gameplay screen
+        app.add_systems(PostStartup, |mut next_screen: ResMut<NextState<Screen>>| {
+            next_screen.set(Screen::Gameplay)
+        });
     }
 }
 
