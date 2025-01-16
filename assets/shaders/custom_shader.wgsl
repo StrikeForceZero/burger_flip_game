@@ -25,7 +25,7 @@ struct VertexOutput {
 @vertex
 fn vertex(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    let deformed_position = vec4<f32>(input.offset.xy, input.position.z, 1.0);
+    let deformed_position = vec4<f32>(input.position.xy + input.offset.xy, input.position.z, 1.0);
     let model = get_world_from_local(input.instance_index);
     out.clip_position = mesh2d_position_local_to_clip(
         model,

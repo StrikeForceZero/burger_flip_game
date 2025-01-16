@@ -4,6 +4,7 @@ use avian2d::prelude::*;
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
+use bevy::ecs::system::SystemParam;
 use bevy::ecs::world::DeferredWorld;
 use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
@@ -31,23 +32,33 @@ use smart_default::SmartDefault;
 pub struct Patty;
 
 #[auto_register_type]
-#[derive(Component, Debug, Clone, PartialEq, Eq, Hash, Reflect)]
+#[derive(Component, Debug, Clone, PartialEq, Eq, Reflect)]
 #[reflect(Component)]
 #[component(on_remove=Self::on_remove)]
-pub struct PattyJoints {
-    physics: Vec<Entity>,
-    mesh: Vec<Entity>,
+pub struct PattyStructure {
+    root: Entity,
+    physic_joints: Vec<Entity>,
+    mesh_joints: EntityHashMap<(Entity, Entity)>,
+    mesh_segments: Vec<Entity>,
 }
 
-impl PattyJoints {
+impl PattyStructure {
+    fn new(root: Entity) -> Self {
+        Self {
+            root: root,
+            physic_joints: Default::default(),
+            mesh_joints: Default::default(),
+            mesh_segments: Default::default(),
+        }
+    }
     fn all_maintained_entities(&self) -> Vec<Entity> {
         [].into_iter()
-            .chain(self.physics.clone())
-            .chain(self.mesh.clone())
+            .chain(self.physic_joints.clone())
+            .chain(self.mesh_segments.clone())
             .collect_vec()
     }
     fn on_remove(mut world: DeferredWorld, entity: Entity, _id: ComponentId) {
-        let Some(patty_joints) = world.get::<PattyJoints>(entity) else {
+        let Some(patty_joints) = world.get::<PattyStructure>(entity) else {
             unreachable!();
         };
         for entity in patty_joints.all_maintained_entities() {
@@ -63,23 +74,103 @@ impl PattyJoints {
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
-#[require(Name(|| "MeshJointRoot"))]
 #[require(Transform)]
 #[require(Visibility)]
-pub struct MeshJointRoot;
+pub struct MeshSegmentRoot;
 
 #[auto_register_type]
-#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+pub enum Direction {
+    Left,
+    Right,
+}
+
+impl Direction {
+    fn to_sign(&self) -> i32 {
+        match self {
+            Self::Left => -1,
+            Self::Right => 1,
+        }
+    }
+    fn is_left(&self) -> bool {
+        match self {
+            Self::Left => true,
+            Self::Right => false,
+        }
+    }
+    fn is_right(&self) -> bool {
+        match self {
+            Self::Left => false,
+            Self::Right => true,
+        }
+    }
+}
+
+#[auto_register_type]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
 #[require(Name(|| "MeshJoint"))]
 #[require(Transform)]
 #[require(Visibility)]
-pub struct MeshJoint;
+pub struct MeshJoint {
+    left: Entity,
+    right: Entity,
+    direction: Direction,
+}
+
+impl MeshJoint {
+    fn new(parent: Entity, next: Entity, direction: Direction) -> Self {
+        match direction {
+            Direction::Left => Self {
+                left: next,
+                right: parent,
+                direction,
+            },
+            Direction::Right => Self {
+                left: parent,
+                right: next,
+                direction,
+            },
+        }
+    }
+    fn left(&self) -> Entity {
+        self.left
+    }
+    fn right(&self) -> Entity {
+        self.right
+    }
+    fn lr(&self) -> (Entity, Entity) {
+        (self.left, self.right)
+    }
+    fn direction(&self) -> Direction {
+        self.direction
+    }
+    fn parent(&self) -> Entity {
+        match self.direction {
+            Direction::Left => self.right,
+            Direction::Right => self.left,
+        }
+    }
+    fn next(&self) -> Entity {
+        match self.direction {
+            Direction::Left => self.left,
+            Direction::Right => self.right,
+        }
+    }
+}
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 #[reflect(Component)]
-pub struct MeshJointIx(usize);
+#[require(Name(|| "MeshSegment"))]
+#[require(Transform)]
+#[require(Visibility)]
+pub struct MeshSegment;
+
+#[auto_register_type]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[reflect(Component)]
+pub struct MeshSegmentIx(usize);
 
 #[auto_register_type]
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
@@ -91,15 +182,13 @@ pub struct OwnedVertices {
     top_right: usize,
 }
 
-impl From<[usize; 4]> for OwnedVertices {
-    fn from(vertices: [usize; 4]) -> Self {
-        Self {
-            bottom_left: vertices[0],
-            top_left: vertices[1],
-            bottom_right: vertices[2],
-            top_right: vertices[3],
-        }
-    }
+impl OwnedVertices {
+    const PATTY_SEGMENT: Self = Self {
+        bottom_left: 0,
+        top_left: 1,
+        bottom_right: 2,
+        top_right: 3,
+    };
 }
 
 #[auto_register_type]
@@ -126,11 +215,29 @@ impl PattyMaterial {
     }
 }
 
+#[derive(SystemParam, Debug)]
+struct PattyMeshMaterialSystemParam<'w> {
+    mesh: Res<'w, PattyMesh>,
+    material: Res<'w, PattyMaterial>,
+}
+
+impl PattyMeshMaterialSystemParam<'_> {
+    pub fn mesh(&self) -> Mesh2d {
+        self.mesh.0.clone().expect("Patty mesh not initialized")
+    }
+    pub fn material(&self) -> MeshMaterial2d<CustomMaterial> {
+        self.material
+            .0
+            .clone()
+            .expect("Patty material not initialized")
+    }
+}
+
 #[auto_register_type]
 #[auto_init_resource]
 #[derive(Resource, Debug, Default, Clone, Reflect)]
 #[reflect(Resource)]
-pub struct SelectedJoint(usize);
+pub struct SelectedSegment(usize);
 
 #[derive(Asset, AsBindGroup, TypePath, Default, Debug, Clone)]
 #[type_path = "burger_flip_game::CustomMaterial"]
@@ -186,105 +293,65 @@ pub(crate) fn plugin(app: &mut App) {
             .chain()
             .in_set(AppSet::Update),
     );
-    app.add_observer(on_patty_add);
     app.add_observer(on_patty_remove);
     app.add_systems(
         Update,
-        (select_joint, manipulate_single_joint, update_offsets).chain(),
+        (select_segment, manipulate_single_segment, update_offsets).chain(),
     );
 }
 
 fn update_offsets(
     mut meshes: ResMut<Assets<Mesh>>,
-    mesh_q: Query<(&Mesh2d, Entity, &Transform, &GlobalTransform)>,
-    parents: Query<&Parent>,
-    joints: Query<(Entity, &Transform, &GlobalTransform, &OwnedVertices), With<MeshJoint>>,
+    mesh_segment_q: Query<(&Mesh2d, &GlobalTransform), With<MeshSegment>>,
+    joints_q: Query<(&Mesh2d, &MeshJoint, &OwnedVertices, &GlobalTransform)>,
 ) {
-    let mut mesh_point_offset_map = EntityHashMap::<HashMap<usize, Vec<Vec2>>>::default();
-    for (entity, transform, global_transform, owned_vertices) in joints.iter() {
-        let Some((_, mesh_entity, mesh_transform, mesh_global_transform)) = parents
-            .iter_ancestors(entity)
-            .find_map(|parent| mesh_q.get(parent).ok())
-        else {
-            panic!("joint {entity} has no ancestor with a mesh");
+    for (Mesh2d(mesh_handle), mesh_joint, owned_vertices, global_transform) in joints_q.iter() {
+        let Ok((_, left_global_transform)) = mesh_segment_q.get(mesh_joint.left) else {
+            panic!("Left mesh segment not found");
         };
-
-        let transform_with_offset = global_transform.reparented_to(mesh_global_transform);
-        let xy = transform_with_offset.translation.truncate();
+        let Ok((_, right_global_transform)) = mesh_segment_q.get(mesh_joint.left) else {
+            panic!("Left mesh segment not found");
+        };
+        let left_local_transform = left_global_transform.reparented_to(global_transform);
+        let right_local_transform = right_global_transform.reparented_to(global_transform);
         const HALF_WIDTH: f32 = PATTY_PART_WIDTH / 2.0;
         const HALF_HEIGHT: f32 = PATTY_HEIGHT / 2.0;
-        const TOP_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, HALF_HEIGHT);
-        const BOTTOM_LEFT: Vec2 = Vec2::new(-HALF_WIDTH, -HALF_HEIGHT);
-        const TOP_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, HALF_HEIGHT);
-        const BOTTOM_RIGHT: Vec2 = Vec2::new(HALF_WIDTH, -HALF_HEIGHT);
+        const TOP_LEFT: Vec3 = Vec3::new(-HALF_WIDTH, HALF_HEIGHT, 0.0);
+        const BOTTOM_LEFT: Vec3 = Vec3::new(-HALF_WIDTH, -HALF_HEIGHT, 0.0);
+        const TOP_RIGHT: Vec3 = Vec3::new(HALF_WIDTH, HALF_HEIGHT, 0.0);
+        const BOTTOM_RIGHT: Vec3 = Vec3::new(HALF_WIDTH, -HALF_HEIGHT, 0.0);
 
-        fn rotate_2d(center: Vec2, offset: Vec2, rotation_angle: f32) -> Vec2 {
-            let radians = rotation_angle.to_radians();
-            let cos_theta = radians.cos();
-            let sin_theta = radians.sin();
+        let top_left = right_local_transform.transform_point(TOP_LEFT);
+        let top_left = top_left.truncate();
 
-            let rotated_offset = Vec2::new(
-                offset.x * cos_theta - offset.y * sin_theta,
-                offset.x * sin_theta + offset.y * cos_theta,
-            );
+        let bottom_left = right_local_transform.transform_point(TOP_RIGHT);
+        let bottom_left = bottom_left.truncate();
 
-            center + rotated_offset
-        }
+        let top_right = left_local_transform.transform_point(TOP_RIGHT);
+        let top_right = top_right.truncate();
 
-        let rotation = global_transform.rotation().to_euler(EulerRot::ZXY).0;
-        let top_left = rotate_2d(xy, TOP_LEFT, rotation);
-        let bottom_left = rotate_2d(xy, BOTTOM_LEFT, rotation);
-        let top_right = rotate_2d(xy, TOP_RIGHT, rotation);
-        let bottom_right = rotate_2d(xy, BOTTOM_RIGHT, rotation);
+        let bottom_right = left_local_transform.transform_point(BOTTOM_RIGHT);
+        let bottom_right = bottom_right.truncate();
 
-        let points = mesh_point_offset_map.entry(mesh_entity).or_default();
-        points
-            .entry(owned_vertices.top_left)
-            .or_default()
-            .push(top_left);
-        points
-            .entry(owned_vertices.top_right)
-            .or_default()
-            .push(top_right);
-        points
-            .entry(owned_vertices.bottom_left)
-            .or_default()
-            .push(bottom_left);
-        points
-            .entry(owned_vertices.bottom_right)
-            .or_default()
-            .push(bottom_right);
-    }
-    for (entity, points) in mesh_point_offset_map {
-        let Ok((Mesh2d(mesh_handle), ..)) = mesh_q.get(entity) else {
-            unreachable!();
+        let Some(mesh) = meshes.get_mut(mesh_handle) else {
+            panic!("MeshJoint mesh not found");
         };
-        if let Some(mesh) = meshes.get_mut(mesh_handle) {
-            let Some(attr_value) = mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET) else {
-                panic!("Mesh does not have Instance_Offset attribute.");
-            };
-            let VertexAttributeValues::Float32x2(ref mut instance_offsets) = attr_value else {
-                panic!("Mesh attribute Instance_Offset is not of type Float32x2.");
-            };
-            fn into_avg(vectors: Vec<Vec2>) -> Vec2 {
-                let len = vectors.len();
-                let mut avg = Vec2::ZERO;
-                for point in vectors {
-                    avg += point;
-                }
-                avg /= len as f32;
-                avg
-            }
-            for (point, positions) in points {
-                instance_offsets[point] = into_avg(positions).to_array();
-            }
-        }
+        let Some(attr_value) = mesh.attribute_mut(ATTRIBUTE_INSTANCE_OFFSET) else {
+            panic!("Mesh does not have Instance_Offset attribute.");
+        };
+        let VertexAttributeValues::Float32x2(ref mut instance_offsets) = attr_value else {
+            panic!("Mesh attribute Instance_Offset is not of type Float32x2.");
+        };
+
+        instance_offsets[owned_vertices.bottom_left] = bottom_left.to_array();
+        instance_offsets[owned_vertices.top_left] = top_left.to_array();
+        instance_offsets[owned_vertices.bottom_right] = bottom_right.to_array();
+        instance_offsets[owned_vertices.top_right] = top_right.to_array();
     }
-    println!();
 }
 
-fn select_joint(
-    mut selected_joint: ResMut<SelectedJoint>,
+fn select_segment(
+    mut selected_joint: ResMut<SelectedSegment>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
 ) {
     for key in keyboard_input.get_just_pressed() {
@@ -303,13 +370,13 @@ fn select_joint(
     }
 }
 
-fn manipulate_single_joint(
-    selected_joint: Res<SelectedJoint>,
-    mut joint_query: Query<(&mut Transform, &MeshJointIx)>,
+fn manipulate_single_segment(
+    selected_segment: Res<SelectedSegment>,
+    mut segment_query: Query<(&mut Transform, &MeshSegmentIx)>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
 ) {
-    for (mut transform, &MeshJointIx(ix)) in joint_query.iter_mut() {
-        if ix != selected_joint.0 {
+    for (mut transform, &MeshSegmentIx(ix)) in segment_query.iter_mut() {
+        if ix != selected_segment.0 {
             continue;
         }
         // Replace with the specific joint name
@@ -341,82 +408,85 @@ impl Command for SpawnPatty {
     }
 }
 
-const PATTY_PARTS: usize = 2;
+const PATTY_PARTS: usize = 7;
 const PATTY_WIDTH: f32 = 100.0;
 const PATTY_PART_WIDTH: f32 = PATTY_WIDTH / PATTY_PARTS as f32;
 const PATTY_HEIGHT: f32 = 20.0;
+const PATTY_JOINT_WIDTH: f32 = PATTY_HEIGHT / 5.0;
 
-fn spawn_patty(In(config): In<SpawnPatty>, mut commands: Commands) {
-    let joints = create_joint_entities(
+fn spawn_patty(
+    In(config): In<SpawnPatty>,
+    mut commands: Commands,
+    pmmmsp: PattyMeshMaterialSystemParam,
+) {
+    let mut patty_structure = create_segment_and_joint_entities(
         MeshOptions {
             segments: PATTY_PARTS,
             width: PATTY_WIDTH,
             height: PATTY_HEIGHT,
         },
         &mut commands,
-    );
+    )
+    .unwrap_or_else(|err| {
+        panic!("Failed to create patty: {:?}", err);
+    });
 
-    let mut patty_joints = PattyJoints {
-        physics: Vec::with_capacity(joints.len()),
-        mesh: joints.clone(),
-    };
-
-    for &joint in patty_joints.mesh.iter().skip(1) {
-        commands.entity(joint).insert((
-            RigidBody::Dynamic,
+    for &entity in patty_structure
+        .mesh_segments
+        .iter()
+        .chain(std::iter::once(&patty_structure.root))
+    {
+        commands.entity(entity).insert((
+            // RigidBody::Dynamic,
+            RigidBody::Kinematic,
             NoAutoCenterOfMass,
             Collider::rectangle(PATTY_PART_WIDTH, PATTY_HEIGHT),
+            pmmmsp.mesh(),
+            pmmmsp.material(),
         ));
     }
 
-    for (&left, &right) in joints.iter().tuple_windows() {
-        let half_width = PATTY_PART_WIDTH * config.scale / 2.0;
-        let joint = commands
-            .spawn((
-                Name::new(format!("PattyJoint({left}, {right})")),
-                RevoluteJoint::new(left, right)
-                    .with_local_anchor_1(Vec2::X * half_width)
-                    .with_local_anchor_2(Vec2::NEG_X * half_width)
-                    .with_compliance(0.0000001),
-                StateScoped(Screen::Gameplay),
-            ))
-            .id();
-        patty_joints.physics.push(joint);
+    let half_width = PATTY_PART_WIDTH * config.scale / 2.0;
+    patty_structure.physic_joints = Vec::with_capacity(patty_structure.mesh_joints.len() * 2);
+    for (&entity, &(left, right)) in patty_structure.mesh_joints.iter() {
+        commands.entity(entity).insert((
+            // RigidBody::Dynamic,
+            RigidBody::Kinematic,
+            NoAutoCenterOfMass,
+            Collider::circle(PATTY_JOINT_WIDTH),
+            // pmmmsp.mesh(),
+            // pmmmsp.material(),
+        ));
+        for (left, right) in [(left, entity), (entity, right)] {
+            let physics_joint = commands
+                .spawn((
+                    Name::new(format!("PattyJoint({left}, {right})")),
+                    RevoluteJoint::new(left, right)
+                        .with_local_anchor_1(Vec2::X * half_width)
+                        .with_local_anchor_2(Vec2::NEG_X * half_width)
+                        .with_compliance(0.0000001),
+                    StateScoped(Screen::Gameplay),
+                ))
+                .id();
+            patty_structure.physic_joints.push(physics_joint);
+        }
     }
 
-    let first_joint = *joints.first().expect("no joints!");
     let translation = config.pos.extend(0.0);
     let transform_scale = config.scale.extend(1.0);
-    commands
-        .spawn((
-            Patty,
-            patty_joints,
-            StateScoped(Screen::Gameplay),
-            Transform::from_translation(translation).with_scale(transform_scale),
-        ))
-        .add_child(first_joint);
-}
-
-fn on_patty_add(
-    trigger: Trigger<OnAdd, Patty>,
-    mut commands: Commands,
-    patty_mesh: Res<PattyMesh>,
-    pan_material: Res<PattyMaterial>,
-) {
-    let mesh = patty_mesh
-        .clone_handle()
-        .expect("Patty mesh not initialized");
-    let material = pan_material
-        .clone_handle()
-        .expect("Patty material not initialized");
-
-    commands.entity(trigger.entity()).insert((mesh, material));
+    commands.entity(patty_structure.root).insert((
+        Name::new("Patty"),
+        Patty,
+        patty_structure,
+        StateScoped(Screen::Gameplay),
+        Transform::from_translation(translation).with_scale(transform_scale),
+    ));
 }
 
 fn on_patty_remove(
     trigger: Trigger<OnRemove, Patty>,
     mut commands: Commands,
-    patties: Query<&PattyJoints, With<Patty>>,
+    patties: Query<&PattyStructure, With<Patty>>,
 ) {
     let entity = trigger.entity();
     let Ok(patty_joints) = patties.get(entity) else {
@@ -468,8 +538,8 @@ fn init_mesh(mut pan_mesh: ResMut<PattyMesh>, mut meshes: ResMut<Assets<Mesh>>) 
     }
     let handle = meshes.add(create_horizontal_segmented_rectangle_with_joints(
         MeshOptions {
-            segments: PATTY_PARTS,
-            width: PATTY_WIDTH,
+            segments: 1,
+            width: PATTY_PART_WIDTH,
             height: PATTY_HEIGHT,
         },
     ));
@@ -572,10 +642,6 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
         }
     }
 
-    for (ix, pos) in positions.iter().enumerate() {
-        println!("{ix} {pos:?}");
-    }
-
     // Create the mesh
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -595,153 +661,323 @@ fn create_horizontal_segmented_rectangle_with_joints(mesh_options: MeshOptions) 
     .with_inserted_indices(Indices::U16(indices))
 }
 
-fn create_joint_entities(mesh_options: MeshOptions, commands: &mut Commands) -> Vec<Entity> {
+fn create_segment_and_joint_entities(
+    mesh_options: MeshOptions,
+    commands: &mut Commands,
+) -> Result<PattyStructure, ()> {
+    #[derive(Debug, Copy, Clone)]
+    struct JointParams {
+        parent: Entity,
+        child: Option<Entity>,
+        direction: Direction,
+    }
+
+    impl TryFrom<JointParams> for MeshJoint {
+        type Error = ();
+        fn try_from(value: JointParams) -> Result<Self, Self::Error> {
+            let Some(child) = value.child else {
+                return Err(());
+            };
+            Ok(Self::new(value.parent, child, value.direction))
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    struct CreatedJoint {
+        entity: Entity,
+        mesh_joint: MeshJoint,
+    }
+
+    impl TryFrom<(Entity, JointParams)> for CreatedJoint {
+        type Error = ();
+        fn try_from(value: (Entity, JointParams)) -> Result<Self, Self::Error> {
+            let (entity, value) = value;
+            Ok(CreatedJoint {
+                entity,
+                mesh_joint: MeshJoint::try_from(value)?,
+            })
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    struct ExtendResult {
+        se: SE,
+        created_joint: Option<CreatedJoint>,
+        created_segment: Option<Entity>,
+    }
+
+    impl ExtendResult {
+        fn new(se: SE) -> Self {
+            Self {
+                se,
+                created_joint: None,
+                created_segment: None,
+            }
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    enum SE {
+        Segment(Entity),
+        Joint(Entity, JointParams),
+    }
+
+    impl SE {
+        fn entity(&self) -> Entity {
+            match *self {
+                SE::Segment(entity) => entity,
+                SE::Joint(entity, _) => entity,
+            }
+        }
+        fn root(root: Entity, entity: Entity, direction: Direction) -> Self {
+            Self::Joint(
+                entity,
+                JointParams {
+                    parent: root,
+                    child: None,
+                    direction,
+                },
+            )
+        }
+        fn extend(self, commands: &mut Commands, direction: Direction) -> Result<ExtendResult, ()> {
+            Ok(match self {
+                Self::Segment(parent) => {
+                    let joint = commands.spawn_empty().id();
+                    commands.entity(parent).add_child(joint);
+                    ExtendResult::new(Self::Joint(
+                        joint,
+                        JointParams {
+                            parent,
+                            child: None,
+                            direction,
+                        },
+                    ))
+                }
+                Self::Joint(entity, mut params) => {
+                    if direction != params.direction {
+                        panic!("mismatched direction!");
+                    }
+                    let segment = commands.spawn_empty().id();
+                    commands.entity(entity).add_child(segment);
+                    params.child = Some(segment);
+
+                    ExtendResult {
+                        se: Self::Segment(segment),
+                        created_joint: Some(CreatedJoint::try_from((entity, params))?),
+                        created_segment: Some(segment),
+                    }
+                }
+            })
+        }
+    }
+
     #[derive(Debug)]
     enum Parent {
         Root(Entity),
-        LR(Entity, Entity),
+        LR(SE, SE),
     }
     impl Parent {
-        fn set_left(&mut self, left: Entity) {
-            *self = match self {
-                Parent::Root(root) => Self::LR(left, *root),
-                Parent::LR(_, right) => Self::LR(left, *right),
-            }
+        fn init(commands: &mut Commands, root: Entity) -> Result<Self, ()> {
+            let left = commands.spawn_empty().id();
+            let right = commands.spawn_empty().id();
+            commands.entity(root).add_child(left).add_child(right);
+            Ok(Self::LR(
+                SE::root(root, left, Direction::Left),
+                SE::root(root, right, Direction::Right),
+            ))
         }
-        fn set_right(&mut self, right: Entity) {
-            *self = match self {
-                Parent::Root(root) => Self::LR(*root, right),
-                Parent::LR(left, _) => Self::LR(*left, right),
+        fn extend_left(&mut self, commands: &mut Commands) -> Result<ExtendResult, ()> {
+            Ok(match self {
+                Self::LR(left, right) => {
+                    let res = left.extend(commands, Direction::Left)?;
+                    *self = Self::LR(res.se, *right);
+                    res
+                }
+                Self::Root(_) => panic!("not initialized"),
+            })
+        }
+        fn extend_right(&mut self, commands: &mut Commands) -> Result<ExtendResult, ()> {
+            Ok(match self {
+                Self::LR(left, right) => {
+                    let res = right.extend(commands, Direction::Right)?;
+                    *self = Self::LR(*left, res.se);
+                    res
+                }
+                Self::Root(_) => panic!("not initialized"),
+            })
+        }
+        fn parent(&self, direction: Direction) -> Entity {
+            match *self {
+                Parent::Root(root) => root,
+                Parent::LR(left, right) => match direction {
+                    Direction::Left => left.entity(),
+                    Direction::Right => right.entity(),
+                },
             }
         }
     }
 
-    #[derive(Debug)]
-    enum Direction {
-        Left,
-        Right,
-    }
-    impl Direction {
-        fn to_sign(&self) -> i32 {
-            match self {
-                Self::Left => 1,
-                Self::Right => -1,
-            }
+    fn dir_from_ix(ix: usize) -> Option<Direction> {
+        if ix == 0 {
+            return None;
         }
-        fn from_ix(ix: usize) -> Self {
-            if ix % 2 == 0 {
-                Self::Left
-            } else {
-                Self::Right
-            }
-        }
+        let direction = if ix % 2 == 0 {
+            Direction::Left
+        } else {
+            Direction::Right
+        };
+        Some(direction)
     }
 
     let segment_width = mesh_options.segment_width();
-    let translation = |ix| {
-        let direction = Direction::from_ix(ix);
-        let offset = if matches!(direction, Direction::Right) {
-            -1
-        } else {
-            0
-        };
-        let layer = (ix as i32 + offset) / 2;
-        let half_size = segment_width / 2.0 * direction.to_sign() as f32;
-        Vec3::X * layer as f32 * half_size + Vec3::X * half_size
-    };
-
     let MeshOptions {
-        segments, width, ..
+        segments: segment_count,
+        ..
     } = mesh_options;
 
-    // Create joint entities and attach them to a parent for easy animation
-    let root = commands.spawn((MeshJointRoot, MeshJointIx(0))).id();
-    let mut parent = Parent::Root(root);
-    let mut joints = {
-        let mut joints = Vec::with_capacity(segments + 1);
-        joints.push(root);
-        joints
-    };
-    joints.extend(
-        (0..segments)
-            .map(|ix| {
-                let joint = commands
-                    .spawn((
-                        MeshJoint,
-                        MeshJointIx(ix + 1),
-                        OwnedVertices::from(vertex_indices_for_joint(ix, segments)),
-                        // Transform::from_translation(translation(ix)),
-                    ))
-                    .id();
-                {
-                    let direction = Direction::from_ix(ix);
-                    {
-                        let parent = match parent {
-                            Parent::Root(root) => root,
-                            Parent::LR(left, right) => match direction {
-                                Direction::Left => left,
-                                Direction::Right => right,
-                            },
-                        };
-                        commands.entity(parent).add_child(joint);
-                    }
-                    match direction {
-                        Direction::Left => parent.set_left(joint),
-                        Direction::Right => parent.set_right(joint),
-                    }
-                }
-                joint
-            })
-            .collect_vec(),
-    );
+    // Create segment entities and attach them to a parent for easy animation
+    let root = commands.spawn((MeshSegmentRoot, MeshSegmentIx(0))).id();
+    let mut patty_structure = PattyStructure::new(root);
 
-    joints
-}
+    let mut segments = HashMap::<Direction, Vec<Entity>>::new();
+    let mut joints = HashMap::<Direction, Vec<Entity>>::new();
 
-fn vertex_indices_for_joint(joint_skeleton_ix: usize, segments: usize) -> [usize; 4] {
-    // Determine if the segment is on the left or right
-    let is_left = joint_skeleton_ix % 2 == 0;
-
-    // Calculate the segment number (0-based index for each direction)
-    let segment_number = joint_skeleton_ix / 2;
-
-    // Calculate the base vertex index for this joint
-    let base_index = if is_left {
-        segments - (segment_number + 1) * 2 // Left segments go backward
-    } else {
-        segments + segment_number * 2 // Right segments go forward
+    let mut on_seg_created = |commands: &mut Commands, entity: Entity, ix: usize| {
+        patty_structure.mesh_segments.push(entity);
+        commands.entity(entity).insert((
+            MeshSegment,
+            MeshSegmentIx(ix),
+            OwnedVertices::PATTY_SEGMENT,
+        ));
     };
 
-    // Return the 4 vertex indices for this segment
-    [
-        base_index,     // Bottom-left
-        base_index + 1, // Top-left
-        base_index + 2, // Bottom-right
-        base_index + 3, // Top-right
-    ]
-}
+    let mut on_joint_created = |commands: &mut Commands, entity: Entity, mesh_joint: MeshJoint| {
+        let (left, right) = mesh_joint.lr();
+        let insert_result = patty_structure.mesh_joints.insert(entity, (left, right));
+        debug_assert!(insert_result.is_none(), "impossible double insertion");
+        commands.entity(entity).insert((
+            Name::new(format!("MeshJoint({left}, {right})",)),
+            mesh_joint,
+            OwnedVertices::PATTY_SEGMENT,
+        ));
+    };
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_vertex_indices_for_joint() {
-        for ix in 0..PATTY_PARTS {
-            println!("{ix} {:?}", vertex_indices_for_joint(ix, PATTY_PARTS));
+    let mut parent = Parent::init(commands, root)?;
+    on_seg_created(commands, root, 0);
+    // start at 1 to account for root
+    // * 2 - 1 because we are inserting joints along with segments
+    for ix in (1..segment_count * 2 - 1) {
+        let direction = dir_from_ix(ix);
+
+        let Some(direction) = direction else {
+            continue;
+        };
+
+        let extend_result = match direction {
+            Direction::Left => parent.extend_left(commands)?,
+            Direction::Right => parent.extend_right(commands)?,
+        };
+        if let Some(new_joint) = extend_result.created_joint {
+            joints.entry(direction).or_default().push(new_joint.entity);
+            on_joint_created(commands, new_joint.entity, new_joint.mesh_joint);
         }
-        let sets = (0..2)
-            .map(|ix| vertex_indices_for_joint(ix, 2))
-            .collect::<Vec<_>>();
-        assert_eq!(sets, vec![[0, 1, 2, 3], [2, 3, 4, 5]]);
-        let unique = (0..2)
-            .flat_map(|ix| vertex_indices_for_joint(ix, 2))
-            .collect::<std::collections::HashSet<_>>()
-            .len();
-        let mesh = create_horizontal_segmented_rectangle_with_joints(MeshOptions {
-            segments: 2,
-            width: 1.0,
-            height: 1.0,
-        });
-        assert_eq!(unique, mesh.count_vertices());
+        if let Some(new_segment) = extend_result.created_segment {
+            segments.entry(direction).or_default().push(new_segment);
+            on_seg_created(commands, new_segment, ix);
+        }
     }
+
+    #[derive(Debug, Copy, Clone)]
+    enum NeedsTransform {
+        Segment(Entity),
+        Joint(Entity),
+    }
+
+    impl NeedsTransform {
+        fn entity(&self) -> Entity {
+            match *self {
+                Self::Segment(entity) => entity,
+                Self::Joint(entity) => entity,
+            }
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    enum DirectionWrapped<T> {
+        Left(T),
+        Right(T),
+    }
+
+    impl<T> DirectionWrapped<T> {
+        fn new(direction: Direction, item: T) -> Self {
+            match direction {
+                Direction::Left => Self::Left(item),
+                Direction::Right => Self::Right(item),
+            }
+        }
+        fn direction(&self) -> Direction {
+            match self {
+                Self::Left(_) => Direction::Left,
+                Self::Right(_) => Direction::Right,
+            }
+        }
+        fn item(&self) -> &T {
+            match self {
+                Self::Left(item) => item,
+                Self::Right(item) => item,
+            }
+        }
+        fn tuple(&self) -> (Direction, &T) {
+            match self {
+                Self::Left(item) => (Direction::Left, item),
+                Self::Right(item) => (Direction::Right, item),
+            }
+        }
+    }
+
+    impl<T1> DirectionWrapped<T1>
+    where
+        T1: Copy,
+    {
+        fn from_map<T2>(
+            map: HashMap<Direction, Vec<T2>>,
+            constructor: fn(T2) -> T1,
+        ) -> Vec<(usize, Self)> {
+            map.into_iter()
+                .flat_map(|(direction, items)| {
+                    items
+                        .into_iter()
+                        .enumerate()
+                        .map(move |(ix, item)| (ix, Self::new(direction, constructor(item))))
+                })
+                .collect()
+        }
+    }
+
+    let needs_transforms = []
+        .into_iter()
+        .chain(DirectionWrapped::from_map(joints, NeedsTransform::Joint))
+        .chain(DirectionWrapped::from_map(
+            segments,
+            NeedsTransform::Segment,
+        ))
+        .collect::<Vec<_>>();
+
+    for (ix, need_transform) in needs_transforms {
+        let (direction, need_transform) = need_transform.tuple();
+        let dir = direction.to_sign() as f32 * Vec3::X;
+        // +1 since root isn't included
+        // let ix = (ix + 1) as f32;
+        // TODO: apparently all this effort isn't needed
+        //  because we are using local transforms that already account for the previous parent transform
+        let translation = match need_transform {
+            NeedsTransform::Segment(_) => dir * segment_width,
+            NeedsTransform::Joint(_) => dir * segment_width,
+        };
+        commands
+            .entity(need_transform.entity())
+            .insert(Transform::from_translation(translation));
+    }
+
+    Ok(patty_structure)
 }
